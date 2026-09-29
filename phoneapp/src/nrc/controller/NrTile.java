@@ -9,6 +9,15 @@ import android.service.quicksettings.TileService;
  * 5G 우선/LTE 우선 선택은 여기서 바꾸지 않는다(삼성 설정에서만, USER 무쓰기 원칙).
  */
 public final class NrTile extends TileService {
+    /**
+     * 패널에 추가된 순간. 활성 타일은 앱이 부를 때만 다시 칠해지므로(패널을 내린다고 저절로 칠하지 않음) 여기서 현재 상태를 칠한다.
+     * 기기 확인(09-30): 이게 없을 때 추가 직후 타일이 앱 상태(켜짐)와 달리 꺼짐으로 보였다.
+     */
+    @Override
+    public void onTileAdded() {
+        show();
+    }
+
     @Override
     public void onStartListening() {
         show();

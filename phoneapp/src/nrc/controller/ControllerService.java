@@ -83,6 +83,8 @@ public final class ControllerService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(NOTE_ID, note()); // 알림 허락이 나중에 켜졌으면 이때 보인다
         refresh();
+        // 상태가 그대로여도 타일을 한 번 칠하게 한다(부팅·업데이트 뒤 타일이 예전 모양에 머물지 않게, 09-30 기기 확인)
+        AppState.refreshTile(this);
         return START_STICKY;
     }
 

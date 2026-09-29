@@ -92,6 +92,7 @@ public final class MainActivity extends Activity {
                             msg = "이 폰에서는 추가 창을 띄울 수 없습니다(코드 " + result
                                     + "). 빠른 설정 패널의 편집(연필) 버튼에서 '5G 자동'을 끌어다 놓아 주세요.";
                     }
+                    AppState.refreshTile(this);
                     status.setText(msg + "\n지금 상태: " + AppState.tile(this).subtitle);
                 });
     }
