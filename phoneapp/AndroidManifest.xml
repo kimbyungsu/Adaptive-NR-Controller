@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  제품 앱(DESIGN §5.13 "상태 표시 구조", 2026-09-30 사용자 결정). 이번 단계: 빠른 설정 타일 뼈대.
-  - 상주 서비스가 사용자 모드·Wi-Fi를 지켜보고 타일 "5G 자동"을 갱신한다. 판단 엔진은 다음 단계에서 옮긴다.
+  제품 앱(DESIGN §5.13, 2026-09-30). 판단 엔진(Engine+Policy)이 상주 서비스에서 돈다.
+  - 쉬기 = 통신사 칸(CARRIER)에서 NR만 뺌. 사용자 칸(USER)은 읽기만. 폰이 이 앱을 통신사가 인정한 앱으로 대해야 동작한다.
   - 타일 탭 = 자동 제어 켜기·끄기, 길게 누르면 상세 화면. 다른 앱 위 표시(오버레이)는 쓰지 않는다.
   - 알림 허락은 먼저 묻지 않는다. 사용자가 앱 알림을 꺼 두면 알림 창에 줄이 없다(안드로이드 13+).
 -->
@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:label="5G 자동 제어"

@@ -21,6 +21,8 @@ public final class TileTextTest {
         check(TileText.of(true, null, NR, false, TileText.PHASE_RESTING, true), "ACTIVE:LTE로 쉬는 중");
         check(TileText.of(true, null, NR, false, TileText.PHASE_PROBING, true), "ACTIVE:5G 확인 중");
         check(TileText.of(true, null, NR, false, null, true), "ACTIVE:5G 관리 중");
+        check(TileText.of(true, null, NR, false, TileText.PHASE_OBSERVE, true), "ACTIVE:관찰만 (제어 불가)");
+        check(TileText.of(true, null, NR, true, TileText.PHASE_OBSERVE, true), "ACTIVE:Wi-Fi · 대기");
         // 서비스가 없으면 관리 중인 척하지 않는다(자동 제어 켜짐일 때만). 문제·꺼짐이 먼저
         check(TileText.of(true, null, NR, false, null, false), "INACTIVE:" + TileText.STOPPED);
         check(TileText.of(true, null, LTE, true, TileText.PHASE_RESTING, false), "INACTIVE:" + TileText.STOPPED);

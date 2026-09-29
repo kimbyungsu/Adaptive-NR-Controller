@@ -6,8 +6,10 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.drawable.Icon;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
@@ -48,6 +50,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         });
         root.addView(autoButton);
         root.addView(button("빠른 설정 패널에 '5G 자동' 타일 추가", v -> requestTile()));
+        root.addView(button("배터리 최적화에서 빼기(오래 살아 있게)", v -> requestBatteryExemption()));
         root.addView(button("이 앱 알림 설정 열기", v -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()))));
         TextView tip = new TextView(this);
@@ -83,8 +86,27 @@ public final class MainActivity extends Activity implements SharedPreferences.On
 
     private void refresh() {
         TileText t = AppState.tile(this);
-        status.setText("지금 상태: " + t.subtitle);
+        Radio r = Radio.open(this);
+        PowerManager pm = getSystemService(PowerManager.class);
+        boolean exempt = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
+        status.setText("지금 상태: " + t.subtitle
+                + "\n통신사 인정: " + (r == null ? "SIM 확인 중" : (r.privileged() ? "예" : "아니요 → 처음 설정 필요"))
+                + "\n배터리 최적화 제외: " + (exempt ? "예" : "아니요"));
         autoButton.setText(AppState.auto(this) ? "자동 제어 끄기" : "자동 제어 켜기");
+    }
+
+    /** 안드로이드 공식 창으로 배터리 최적화 제외를 묻는다(허락 여부는 사용자가 정한다). */
+    private void requestBatteryExemption() {
+        PowerManager pm = getSystemService(PowerManager.class);
+        if (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())) {
+            refresh();
+            return;
+        }
+        try {
+            startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
+        } catch (RuntimeException e) {
+            startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        }
     }
 
     /** 사용자에게 타일 추가를 묻는 시스템 창을 띄운다(안드로이드 13+ 공식 방법, 추가 여부는 사용자가 정한다). */

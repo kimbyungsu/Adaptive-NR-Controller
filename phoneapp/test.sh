@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # 제품 앱의 안드로이드 없는 부분 시험(PC). 필요: JAVA_HOME(JDK 17)
+# 대상: 판단 엔진(Policy·Params·UseSegments, daemon에서 옮김), 타일 표시 규칙(TileText), 통신사 칸 계획(CarrierPlan)
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -7,6 +8,16 @@ if command -v cygpath >/dev/null 2>&1; then to_arg() { cygpath -m "$1"; }; JDK="
 else to_arg() { printf '%s\n' "$1"; }; JDK="${JAVA_HOME:?}"; EXE=; fi
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
-"$JDK/bin/javac$EXE" -encoding UTF-8 -d "$(to_arg "$OUT")" \
-  "$(to_arg "$HERE/src/nrc/controller/TileText.java")" "$(to_arg "$HERE/test/nrc/controller/TileTextTest.java")"
-"$JDK/bin/java$EXE" -cp "$(to_arg "$OUT")" nrc.controller.TileTextTest
+SRC=()
+for f in src/nrc/controller/Params.java src/nrc/controller/Policy.java src/nrc/controller/UseSegments.java \
+         src/nrc/controller/TileText.java src/nrc/controller/CarrierPlan.java \
+         test/nrc/controller/PolicyTest.java test/nrc/controller/UseSegmentsTest.java \
+         test/nrc/controller/TileTextTest.java test/nrc/controller/CarrierPlanTest.java; do
+  [ -f "$HERE/$f" ] && SRC+=("$(to_arg "$HERE/$f")")
+done
+"$JDK/bin/javac$EXE" -encoding UTF-8 -d "$(to_arg "$OUT")" "${SRC[@]}"
+for t in UseSegmentsTest PolicyTest TileTextTest CarrierPlanTest; do
+  [ -f "$HERE/test/nrc/controller/$t.java" ] || continue
+  echo "== $t"
+  "$JDK/bin/java$EXE" -Dsun.stdout.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "$(to_arg "$OUT")" "nrc.controller.$t" | tail -2
+done

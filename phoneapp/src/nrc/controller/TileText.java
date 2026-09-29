@@ -13,7 +13,7 @@ final class TileText {
     static final int MODE_UNKNOWN = -1, MODE_LTE = 0, MODE_NR = 1;
 
     /** 컨트롤러가 하는 일(엔진 연결 뒤 채워진다). */
-    static final String PHASE_RESTING = "resting", PHASE_PROBING = "probing";
+    static final String PHASE_RESTING = "resting", PHASE_PROBING = "probing", PHASE_OBSERVE = "observe";
 
     /** 자동 제어는 켜져 있는데 상주 서비스가 없을 때. 이때 타일 탭은 끄기가 아니라 다시 시작이다. */
     static final String STOPPED = "멈춤 · 눌러서 다시 시작";
@@ -41,6 +41,7 @@ final class TileText {
         if (mode == MODE_UNKNOWN) return new TileText(Look.ACTIVE, "확인 중");
         if (mode == MODE_LTE) return new TileText(Look.ACTIVE, "LTE 우선 · 대기");
         if (wifi) return new TileText(Look.ACTIVE, "Wi-Fi · 대기");
+        if (PHASE_OBSERVE.equals(phase)) return new TileText(Look.ACTIVE, "관찰만 (제어 불가)");
         if (PHASE_RESTING.equals(phase)) return new TileText(Look.ACTIVE, "LTE로 쉬는 중");
         if (PHASE_PROBING.equals(phase)) return new TileText(Look.ACTIVE, "5G 확인 중");
         return new TileText(Look.ACTIVE, "5G 관리 중");
