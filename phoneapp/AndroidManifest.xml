@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  제품 앱(DESIGN §5.13). 이번 단계: 상단바 표시 시험판.
+  - 앱 화면에서 사용자가 표시 모양·색·크기·위치를 바꿔 보며 고른다.
+  - 표시는 "다른 앱 위에 표시" 허락으로 그린다. 허락은 사용자가 폰 설정 화면에서 직접 켠다(앱이 그 화면을 열어 준다).
+  - 컨트롤러 판단(통신사 권한으로 쉬기)은 다음 단계에서 이 앱에 옮긴다.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="nrc.controller"
+    android:versionCode="1"
+    android:versionName="0.1.0">
+
+    <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="33" />
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <application
+        android:label="NR 컨트롤러"
+        android:icon="@android:drawable/sym_def_app_icon">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".StatusService"
+            android:exported="false" />
+    </application>
+</manifest>
