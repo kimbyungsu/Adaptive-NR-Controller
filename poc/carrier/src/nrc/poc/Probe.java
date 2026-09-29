@@ -25,7 +25,7 @@ final class Probe {
         StringBuilder sb = new StringBuilder();
         int sub = SubscriptionManager.getDefaultDataSubscriptionId();
         sb.append("from=").append(from).append(" op=").append(op).append(" uid=").append(android.os.Process.myUid())
-                .append(" sub=").append(sub);
+                .append(" pid=").append(android.os.Process.myPid()).append(" sub=").append(sub);
         TelephonyManager tm = ctx.getSystemService(TelephonyManager.class).createForSubscriptionId(sub);
         boolean priv = false;
         try {
@@ -55,6 +55,12 @@ final class Probe {
         Log.i(TAG, line);
         append(ctx, line);
         return line;
+    }
+
+    /** 한 줄 기록(logcat + poc.log). */
+    static void note(Context ctx, String line) {
+        Log.i(TAG, line);
+        append(ctx, line);
     }
 
     private static void append(Context ctx, String line) {

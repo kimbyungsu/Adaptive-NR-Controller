@@ -337,6 +337,67 @@
 - 확인하지 못한 것: 삼성 절전 모드 등 다른 기능이 POWER 사유를 쓰는지. 쓰면 컨트롤러와 서로 덮어쓸 수 있다.
 - 사용자 PC의 인터넷은 폰 핫스팟을 쓴다. 폰 재부팅 동안 PC 쪽 작업도 멈춘다.
 
+### 2.15 통신사 권한 경로 PoC (2026-09-29 21:48~22:40, 사용자 승인)
+
+**방법.** Android CarrierConfig에 앱 서명 인증서를 테스트용 override로 추가해 Telephony가 carrier privilege를 인정하게 한다. SIM은 건드리지 않는다.
+- 대상 키: `carrier_certificate_string_array`. 항목 형식은 `<sha1|sha256>` 또는 `<sha1|sha256>:<패키지>`다.
+- **지금 목록을 읽어 끝에 덧붙인다.** 기존 항목은 덮어쓰지 않는다.
+- 시험 앱: `poc/carrier`(패키지 `nrc.poc`, uid 10505). 서명 인증서 SHA-256은 `2186eadb…a4b79fa4`로, 동반 앱과 같은 디버그 키다.
+- shell 도구: 스크래치패드 `check/src/nrc/CcTool.java`(폰 `/data/local/tmp/nrc/cctool.dex`). `app_process`에서 `ICarrierConfigLoader.overrideConfig(subId, bundle, persistent)`를 직접 부른다.
+  - `cmd phone cc`는 user 빌드에서 막힌다(root uid와 비 user 빌드를 요구한다).
+  - 이 기기의 `CarrierConfigLoader.overrideConfig`(추출본 891~917행)는 `MODIFY_PHONE_STATE`만 검사한다. 호출자가 shell이라는 이유로 거절하는 검사는 없다. 09-29 앞서 본 LineageOS 사본의 추가 검사는 이 기기 코드에 없다.
+
+| 시각 | 한 일 | 결과 |
+|---|---|---|
+| 21:50 | 시험 앱 설치, 기준 확인 | 인증서 목록 `[59DFFF…17B1]`(1개). 앱 `carrierPriv=false`, 사유 0~3 읽기는 모두 SecurityException. `cmd phone has-carrier-privileges nrc.poc` → false |
+| 21:53 | ① 임시(persistent=false) override로 `<sha256>:nrc.poc`를 덧붙임 | 목록 `[59DFFF…17B1, 2186eadb…:nrc.poc]`. 앱 `carrierPriv=true`, 사유 0~3 읽기 성공(모두 840583). 시스템 판정 true → **관문 1 통과** |
+| 21:54:24 | ② 앱 프로세스가 `setAllowedNetworkTypesForReason(CARRIER, 316295)` 호출 | 성공. 저장값은 54151(아래 "LTE_CA 비트"). 데이터가 1.25초 끊긴 뒤 LTE(`dataRat=14`). 컨트롤러가 `allowed reason=2 nr=false`를 관측했다. 전환 직후 PCC 3칸(LTE 주 1 + 보조 2) |
+| 21:58:31 | ② 앱이 CARRIER=840583으로 되돌림 | 성공. 저장값은 578439. 약 2초 뒤 5G(`nr_on by=pcc`) → **관문 2 통과(양방향)** |
+| 21:59 | shell 도구(ReasonCheck)로 CARRIER=840583 정확히 복원 | 네 사유 모두 840583 |
+| 22:02 | 셸이 보낸 방송을 받은 앱이 `startForegroundService` 호출 | `ForegroundServiceStartNotAllowedException`(배경 시작 제한) |
+| 22:03 | `cmd deviceidle whitelist +nrc.poc`(배터리 최적화 제외) 뒤 재시도 | 시작됨. `isForeground=true`. 30초 뒤 기록 `carrierPriv=true` |
+| 22:06경(명령 출력에 시각 없음) | ③ 영구(persistent=true) override로 같은 목록 저장 | `mPersistentOverrideConfigs`에 목록과 `__carrier_config_package_version__=1`이 들어감 |
+| 22:20:07 | 재부팅(`adb reboot`, 사용자 승인). 이후 앱에는 아무 명령도 보내지 않음 | 22:21:01 부팅 완료 |
+| 22:20:52, 22:21:37 | — | 로그 `Loaded persistent override config from XML` 2회 |
+| 22:21:40 | 앱이 `CARRIER_CONFIG_CHANGED` 방송을 받아 스스로 확인 | `carrierPriv=true`(pid 11307) |
+| 22:23:12 | 앱이 `BOOT_COMPLETED`를 받아 확인하고 상주 서비스를 띄움 | `carrierPriv=true`(pid 20870), 전면 서비스 → **관문 3 통과** |
+| 22:23:42, 22:25:12 | 상주 서비스 30초·2분 기록 | `carrierPriv=true` |
+| 22:30 | ADB로 읽기만 함 | `has-carrier-privileges` true. 배터리 최적화 제외 유지. `nrc.poc` 프로세스는 앱 uid(u0_a505)다. 셸 데몬은 재부팅으로 없어짐 |
+| 22:35 | ⑤ 판단 재료 등록 시험판 설치, 상주 서비스 재시작(관문 4 계측도 이 시각부터) | 아래 "판단 재료" |
+
+**판단 재료(관문 5).** 데몬 Observer가 쓰는 알림을 앱에서 하나씩 따로 등록했다. `READ_PHONE_STATE`는 선언만 하고 허락은 주지 않았다.
+
+| 재료 | 결과 | 대체 |
+|---|---|---|
+| ServiceState·PhysicalChannelConfig·SignalStrengths·DataActivity·DataConnectionState·DisplayInfo | 등록 성공, 첫 사건 수신(PCC `n=2 nr=1`, 표시 `override=3`) | — |
+| CallState | 등록 성공(`state=0`). 통신사 권한만으로 된다 | — |
+| 설정 키 `preferred_network_mode2` | 읽기(26)와 변경 감시 등록 모두 성공 | — |
+| AllowedNetworkTypes 알림(숨은 인터페이스) | **거절**: `READ_PRIVILEGED_PHONE_STATE` 필요 | 설정 키 감시와 사유별 값 읽기(`getAllowedNetworkTypesForReason`, 통신사 권한으로 됨) |
+| `ServiceState.getNrState()`(숨은 메서드) | **막힘**: `NoSuchMethodException`(앱 프로세스의 숨은 API 제한) | PCC의 NR 칸. 지난 기록에서 NR 연결 감지 450번 중 446번이 PCC였고, ss만으로 잡힌 것은 4번 |
+
+**알게 된 것.**
+- **LTE_CA 비트.** 앱이 공개 API(`TelephonyManager`)로 쓰면 저장값에서 비트 18(LTE_CA)이 빠진다(316295→54151, 840583→578439). 같은 서버 메서드를 shell이 직접 부르면 그대로 저장된다.
+  - 이 기기의 `PhoneInterfaceManager.setAllowedNetworkTypesForReason`(추출본 4881행~)에는 빼는 코드가 없다. 그래서 앱 쪽 라이브러리에서 빼는 것으로 본다(프레임워크 코드는 직접 읽지 않은 추정).
+  - 영향: 막은 직후에도 LTE 묶음(PCC 3칸)은 유지됐다. 기능상 차이는 보지 못했다.
+  - 다만 앱은 원래 값(840583)을 비트까지 똑같이 되돌릴 수 없다. 정확 복원은 shell(PC)이 해야 한다.
+- **override 동작(이 기기 코드).**
+  - 묶음을 넘기면 기존 override에 `putAll`로 합친다. 다른 키는 그대로 둔다.
+  - `null`을 넘기면 그 폰의 임시·영구 override를 **전부** 비우고 파일을 지운다.
+  - 시험 전에는 영구 override가 null이었고, 임시 override에는 우리 항목만 있었다. 그래서 `clear`로 원래 상태로 정확히 돌아간다. 다른 기기에서는 설치 전에 기존 override를 기록해 두어야 한다.
+- **영구 override가 다시 적용되는 조건**(`restoreConfigFromXml`). 아래 셋이 모두 맞아야 한다.
+  - SIM 기록이 올라와 있어야 한다.
+  - 파일 이름이 ICCID(와 세부 통신사 id)로 정해진다.
+  - 저장 때의 `__carrier_config_package_version__`이 지금 통신사 설정 패키지 버전과 같아야 한다. 다르면 `Saved version mismatch`로 버린다.
+  - 따라서 SIM·eSIM 교체, 통신사 설정 패키지 업데이트(삼성 OTA 등), 공장 초기화, 전화 앱 데이터 삭제가 일어나면 풀린다. 표현은 "재부팅 후 유지"로 쓴다.
+- **덮어쓰기 위험.** override는 저장 시점의 목록을 고정한다. 나중에 통신사가 기본 목록을 바꾸면, override가 풀릴 때까지 그 변경이 가려진다.
+- **상주 서비스.** 배경에서의 전면 서비스 시작은 막힌다. `BOOT_COMPLETED` 수신 때나 배터리 최적화 제외 상태에서는 된다.
+- **확인하지 못한 것.**
+  - 관문 4: 오래 살아남기. 22:35 시작, 10분마다 기록한다.
+  - CARRIER 사유 값이 재부팅 뒤 남는지. POWER는 남았다(§2.14). AOSP상 모든 사유가 저장된다(§4).
+  - CARRIER로 막은 상태의 설정 화면을 육안으로 보지는 않았다. 화면이 USER 사유만 보여 준다는 §2.13 분석과 POWER 육안 결과(§2.14)로 추정한다.
+  - 통신사 앱(목록의 기존 인증서 주인)이나 삼성 기능이 CARRIER 사유를 쓰는지. 시험 동안 CARRIER는 늘 840583이었다.
+  - Wi-Fi 감지(`registerDefaultNetworkCallback`)는 일반 앱 공개 API라 따로 시험하지 않았다.
+
 ## 3. 관측 경로 실측
 
 | 신호 | 경로 | 결과 |

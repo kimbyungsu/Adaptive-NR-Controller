@@ -8,10 +8,12 @@ if command -v cygpath >/dev/null 2>&1; then
   to_exe() { cygpath -u "$1"; }
   to_arg() { cygpath -m "$1"; }
   EXE=.exe
+  SEP=';'
 else
   to_exe() { printf '%s\n' "$1"; }
   to_arg() { printf '%s\n' "$1"; }
   EXE=
+  SEP=':'
 fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 JDK="$(to_exe "${JAVA_HOME:?JAVA_HOME not set}")"
@@ -28,13 +30,18 @@ cp "$HERE/AndroidManifest.xml" "$WORK/"
 mkdir -p "$WORK/classes" "$WORK/dex"
 W="$(to_arg "$WORK")"
 
+# 숨은 API 선언(daemon/stubs)은 컴파일 때만 쓰고 dex에는 넣지 않는다(기기 프레임워크의 것을 쓴다).
+STUB_SRC=()
+while IFS= read -r f; do STUB_SRC+=("$(to_arg "$f")"); done < <(find "$HERE/../../daemon/stubs" -name '*.java')
+mkdir -p "$WORK/stubs"
+"$JDK/bin/javac$EXE" -source 8 -target 8 -encoding UTF-8 -Xlint:-options -cp "$JAR" -d "$W/stubs" "${STUB_SRC[@]}"
 SRC=()
 while IFS= read -r f; do SRC+=("$(to_arg "$f")"); done < <(find "$HERE/src" -name '*.java')
-"$JDK/bin/javac$EXE" -source 8 -target 8 -encoding UTF-8 -Xlint:-options -cp "$JAR" -d "$W/classes" "${SRC[@]}"
+"$JDK/bin/javac$EXE" -source 8 -target 8 -encoding UTF-8 -Xlint:-options -cp "$JAR$SEP$W/stubs" -d "$W/classes" "${SRC[@]}"
 CLS=()
 while IFS= read -r f; do CLS+=("$(to_arg "$f")"); done < <(find "$WORK/classes" -name '*.class')
 "$JDK/bin/java$EXE" -cp "$(to_arg "$BT/lib/d8.jar")" com.android.tools.r8.D8 --min-api 31 --lib "$JAR" \
-  --output "$W/dex" "${CLS[@]}"
+  --classpath "$W/stubs" --output "$W/dex" "${CLS[@]}"
 "$BT/aapt2$EXE" link -o "$W/unsigned.apk" -I "$JAR" --manifest "$W/AndroidManifest.xml"
 (cd "$WORK/dex" && "$JDK/bin/jar$EXE" uf "$W/unsigned.apk" classes.dex)
 "$BT/zipalign$EXE" -f 4 "$W/unsigned.apk" "$W/aligned.apk"

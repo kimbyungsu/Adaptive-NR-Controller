@@ -13,6 +13,8 @@
     <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="33" />
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <application android:label="NR PoC" android:hasCode="true">
         <receiver android:name=".Cmd" android:exported="true">
@@ -23,8 +25,13 @@
         <receiver android:name=".Boot" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <receiver android:name=".CcChanged" android:exported="true">
+            <intent-filter>
+                <action android:name="android.telephony.action.CARRIER_CONFIG_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".Keeper" android:exported="false" />
     </application>
 </manifest>
