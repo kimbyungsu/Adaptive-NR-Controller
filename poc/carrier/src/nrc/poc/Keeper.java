@@ -59,6 +59,7 @@ public final class Keeper extends Service {
     @Override
     public void onDestroy() {
         h.removeCallbacks(beat);
+        Signals.stop();
         Probe.run(this, "check", 0, "keeper:destroy");
         super.onDestroy();
     }

@@ -17,7 +17,10 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <application android:label="NR PoC" android:hasCode="true">
-        <receiver android:name=".Cmd" android:exported="true">
+        <!-- 시험 명령은 shell(ADB)만 보낼 수 있다: DUMP 권한은 일반 앱이 받을 수 없다(signature|privileged|development).
+             이 앱은 통신사 권한을 가지므로, 막지 않으면 다른 앱이 이 수신기를 통해 네트워크 설정을 바꿀 수 있다. -->
+        <receiver android:name=".Cmd" android:exported="true"
+            android:permission="android.permission.DUMP">
             <intent-filter>
                 <action android:name="nrc.poc.CMD" />
             </intent-filter>

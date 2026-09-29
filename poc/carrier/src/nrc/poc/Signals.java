@@ -14,6 +14,7 @@ import android.telephony.TelephonyCallback;
 import android.telephony.TelephonyDisplayInfo;
 import android.telephony.TelephonyManager;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -26,6 +27,10 @@ import java.util.concurrent.Executor;
  */
 final class Signals {
     private static final Map<String, Integer> counts = new TreeMap<>();
+    /** 등록한 콜백. 시스템은 콜백을 약한 참조로만 쥐므로 여기서 붙잡아 두지 않으면 GC 뒤 조용히 끊긴다. */
+    private static final List<TelephonyCallback> held = new ArrayList<>();
+    private static TelephonyManager tel;
+    private static ContentObserver keyObserver;
     private static Context app;
 
     private Signals() {
@@ -36,10 +41,12 @@ final class Signals {
     }
 
     static void start(Context ctx) {
+        stop();
         app = ctx.getApplicationContext();
         Executor ex = ctx.getMainExecutor();
         int sub = SubscriptionManager.getDefaultDataSubscriptionId();
         TelephonyManager tm = ctx.getSystemService(TelephonyManager.class).createForSubscriptionId(sub);
+        tel = tm;
         reg(tm, ex, "ss", new Ss());
         reg(tm, ex, "pcc", new Pcc());
         reg(tm, ex, "sig", new Sig());
@@ -51,9 +58,28 @@ final class Signals {
         key(sub);
     }
 
+    /** 서비스가 끝날 때 등록을 푼다. */
+    static void stop() {
+        if (tel != null) {
+            for (TelephonyCallback cb : held) {
+                try {
+                    tel.unregisterTelephonyCallback(cb);
+                } catch (Throwable ignored) {
+                    // 이미 풀렸으면 무시
+                }
+            }
+        }
+        held.clear();
+        if (keyObserver != null && app != null) {
+            app.getContentResolver().unregisterContentObserver(keyObserver);
+            keyObserver = null;
+        }
+    }
+
     private static void reg(TelephonyManager tm, Executor ex, String name, TelephonyCallback cb) {
         try {
             tm.registerTelephonyCallback(ex, cb);
+            held.add(cb);
             Probe.note(app, "sig_reg " + name + " ok");
         } catch (Throwable e) {
             Probe.note(app, "sig_reg " + name + " failed=" + e);
@@ -70,7 +96,7 @@ final class Signals {
         }
         try {
             Uri uri = Settings.Global.getUriFor(name);
-            app.getContentResolver().registerContentObserver(uri, false, new ContentObserver(new Handler(Looper.getMainLooper())) {
+            keyObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
                 @Override
                 public void onChange(boolean selfChange) {
                     String v;
@@ -81,7 +107,8 @@ final class Signals {
                     }
                     event("key", name + "=" + v, true);
                 }
-            });
+            };
+            app.getContentResolver().registerContentObserver(uri, false, keyObserver);
             Probe.note(app, "key_watch ok");
         } catch (Throwable e) {
             Probe.note(app, "key_watch failed=" + e);
