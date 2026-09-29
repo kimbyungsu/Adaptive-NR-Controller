@@ -52,6 +52,15 @@
                 android:name="android.service.quicksettings.TOGGLEABLE_TILE"
                 android:value="true" />
         </service>
+        <!-- 개발 시험 명령: 보내는 쪽에 DUMP 권한을 요구한다(shell은 보유, 일반 앱은 없음). 사용자 칸을 쓰는 명령은 없다 -->
+        <receiver
+            android:name=".TestCommand"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="nrc.controller.TEST" />
+            </intent-filter>
+        </receiver>
         <receiver
             android:name=".BootReceiver"
             android:exported="false">

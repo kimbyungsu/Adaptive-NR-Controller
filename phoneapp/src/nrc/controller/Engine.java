@@ -133,6 +133,17 @@ final class Engine implements Policy.Env, Watcher.Listener {
         after(t);
     }
 
+    /** 개발 시험(PC 명령): 끊김 조건 없이 쉬기(쉬는 시간 TEST_COOL_MS). 5G 양호·경계 상태에서만 받는다. */
+    void testCooldown() {
+        if (stopped || policy == null) return;
+        long t = now();
+        policy.testCooldown(t, TEST_COOL_MS);
+        after(t);
+    }
+
+    /** 시험용 쉬는 시간(전환 최소 간격과 같게, daemon과 같음). */
+    static final long TEST_COOL_MS = 120_000;
+
     /** 자동 제어 끄기: 판단 규칙의 종료 절차(쉬는 중이면 풀기, 통화 중이면 통화 뒤)를 거친 뒤 stopDone → Host.stopped(). */
     void stop() {
         if (stopped || policy == null) return;

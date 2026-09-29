@@ -52,6 +52,8 @@ public final class ControllerService extends Service implements Engine.Host,
      * 타일·화면은 이 값이 false면 "멈춤"으로 보여 준다(관리 중인 척하지 않음).
      */
     static volatile boolean running;
+    /** 개발 시험 명령이 엔진에 닿기 위한 지금 서비스(없으면 null). */
+    private static volatile ControllerService current;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private ScheduledExecutorService worker;
@@ -83,6 +85,21 @@ public final class ControllerService extends Service implements Engine.Host,
         }
     }
 
+    /** 개발 시험(TestCommand): 엔진에 시험용 쉬기를 넘긴다. 서비스·엔진이 없으면 false. */
+    static boolean testCooldown() {
+        ControllerService s = current;
+        if (s == null) return false;
+        s.post("test_cooldown", () -> {
+            if (s.engine != null) s.engine.testCooldown();
+        });
+        return true;
+    }
+
+    static boolean engineRunning() {
+        ControllerService s = current;
+        return s != null && s.engine != null;
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -92,6 +109,7 @@ public final class ControllerService extends Service implements Engine.Host,
         // 이전 실행의 "엔진 돌고 있음"을 먼저 지운다(재생성 직후 엔진이 뜨기 전 "관리 중"으로 보이지 않게, 외부 검증 보완)
         AppState.prefs(this).edit().putBoolean(AppState.ENGINE, false).commit();
         running = true;
+        current = this;
         AppState.aliveChanged(this);
         worker = Executors.newSingleThreadScheduledExecutor();
         File dir = getExternalFilesDir(null);
@@ -359,6 +377,7 @@ public final class ControllerService extends Service implements Engine.Host,
     @Override
     public void onDestroy() {
         running = false;
+        current = null;
         AppState.aliveChanged(this);
         if (prefs != null) prefs.unregisterOnSharedPreferenceChangeListener(this);
         if (keyObs != null) getContentResolver().unregisterContentObserver(keyObs);
