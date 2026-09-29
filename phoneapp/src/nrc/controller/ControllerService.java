@@ -66,6 +66,8 @@ public final class ControllerService extends Service implements Engine.Host,
     private SharedPreferences prefs;
     private String key;
     private volatile boolean wifi;
+    /** 폰 꺼짐·서비스 종료 처리를 시작했다. 이후 새 일은 받지 않는다. */
+    private volatile boolean terminating;
 
     /**
      * 서비스를 띄운다(이미 떠 있으면 알림 한 줄을 다시 올리고 엔진 상태를 다시 본다). 시작 요청이 거절되면 false.
@@ -190,7 +192,7 @@ public final class ControllerService extends Service implements Engine.Host,
             return;
         }
         if (!radio.privileged()) {
-            journal.write("engine_wait", "why", "no_privilege", "oursBlocked", Engine.oursBlocked(this));
+            journal.write("engine_wait", "why", "no_privilege", "own", Engine.ownMask(this, radio.sub));
             publishIdle();
             return;
         }
@@ -202,13 +204,18 @@ public final class ControllerService extends Service implements Engine.Host,
 
     @Override
     public void publish(int mode, String phase, String problem) {
-        AppState.observed(this, mode, wifi, phase, problem);
+        AppState.observed(this, mode, wifi, phase, problem, true);
     }
 
+    /**
+     * 자동 제어 끄기가 끝났다. 끄기를 마무리하는 사이(예: 통화가 끝나길 기다리는 동안) 사용자가 다시 켰을 수 있으므로
+     * 최신 선택을 다시 보고 켜져 있으면 엔진을 새로 띄운다(외부 검증 지적: 다시 켜기가 사라지고 "관리 중"으로 보였다).
+     */
     @Override
     public void stopped() {
         engine = null;
-        publishIdle();
+        if (!terminating && AppState.auto(this)) startEngineIfWanted();
+        if (engine == null) publishIdle();
     }
 
     /** 엔진이 없을 때의 상태: 사용자 모드와 문제(설정 필요 등). 우리 막음이 남아 있으면 풀기 재시도를 건다. */
@@ -216,7 +223,7 @@ public final class ControllerService extends Service implements Engine.Host,
         Radio r = radio != null ? radio : Radio.open(this);
         String problem = null;
         int mode;
-        boolean ours = Engine.oursBlocked(this);
+        boolean ours = r != null && Engine.ownMask(this, r.sub) >= 0;
         if (r == null) {
             problem = "SIM 확인 중";
             mode = TileText.MODE_UNKNOWN;
@@ -228,16 +235,22 @@ public final class ControllerService extends Service implements Engine.Host,
             mode = keyMode();
             problem = ours ? "5G 막힘 · 다시 설정 필요" : "처음 설정 필요";
         }
-        AppState.observed(this, mode, wifi, null, problem);
-        scheduleLeftoverRetry();
+        AppState.observed(this, mode, wifi, null, problem, false);
+        scheduleLeftoverRetry(r);
     }
 
-    /** 엔진 없이 남은 우리 막음을 푼다(통화 중이면 다음 재시도에서). */
+    /**
+     * 엔진 없이 남은 이 SIM의 우리 막음을 푼다(통화 중이면 다음 재시도에서). 지금 값이 우리가 남긴 값이 아니면
+     * 남이 바꾼 것이므로 풀지 않고 우리 기록만 지운다.
+     */
     private void liftLeftover(Radio r, String why) {
+        long own = Engine.ownMask(this, r.sub);
+        if (own < 0) return;
         long c = r.read(Radio.CARRIER);
-        CarrierPlan.Carrier k = CarrierPlan.classify(c, true);
-        if (k == CarrierPlan.Carrier.OPEN) {
-            engineStore().edit().putBoolean(Engine.OURS, false).commit();
+        CarrierPlan.Carrier k = CarrierPlan.classify(c, own);
+        if (k == CarrierPlan.Carrier.OPEN || k == CarrierPlan.Carrier.EXTERNAL) {
+            Engine.setOwn(this, r.sub, -1);
+            journal.write("own_cleared", "why", why, "carrier", c, "own", own, "as", k.name());
             return;
         }
         if (k != CarrierPlan.Carrier.OURS || r.callGuard() != null) return;
@@ -245,17 +258,14 @@ public final class ControllerService extends Service implements Engine.Host,
         long after = r.read(Radio.CARRIER);
         boolean ok = called && CarrierPlan.hasNr(after);
         journal.write("lift", "why", why, "ok", ok, "before", c, "after", after);
-        if (ok) engineStore().edit().putBoolean(Engine.OURS, false).commit();
+        if (ok) Engine.setOwn(this, r.sub, -1);
     }
 
-    private SharedPreferences engineStore() {
-        return getSharedPreferences(Engine.STORE, MODE_PRIVATE);
-    }
-
-    private void scheduleLeftoverRetry() {
+    /** 엔진이 없는데 이 SIM에 우리 막음이 남아 있으면 30초 뒤 다시 풀어 본다(다른 SIM의 기록은 그 SIM이 켜졌을 때 푼다). */
+    private void scheduleLeftoverRetry(Radio r) {
         if (leftoverRetry != null) leftoverRetry.cancel(false);
         leftoverRetry = null;
-        if (engine != null || !Engine.oursBlocked(this)) return;
+        if (terminating || engine != null || r == null || Engine.ownMask(this, r.sub) < 0) return;
         leftoverRetry = worker.schedule(() -> guarded("leftover", () -> {
             if (engine == null) publishIdle();
         }), LEFTOVER_RETRY_MS, TimeUnit.MILLISECONDS);
@@ -263,16 +273,22 @@ public final class ControllerService extends Service implements Engine.Host,
 
     // ================================================================ 폰 꺼짐
 
-    /** 폰이 꺼지기 직전: 쉬는 중이어도 우리 막음을 푼다(최대 3초 기다림). */
+    /**
+     * 폰이 꺼지기 직전·서비스 종료: 먼저 새 일을 막고 엔진을 완전히 멈춘 뒤, 쉬는 중이어도 우리 막음을 푼다(최대 3초 기다림).
+     * 외부 검증 지적: 엔진을 멈추지 않고 풀기만 하면 줄 서 있던 사건이 다시 막을 수 있었다.
+     */
     private void liftBeforeShutdown() {
+        if (worker == null || worker.isShutdown()) return;
+        terminating = true;
         try {
             Future<?> f = worker.submit(() -> guarded("shutdown", () -> {
                 journal.write("shutdown");
+                if (leftoverRetry != null) leftoverRetry.cancel(false);
                 if (engine != null) {
-                    engine.liftForShutdown();
+                    engine.terminate("shutdown");
                 } else {
                     Radio r = radio != null ? radio : Radio.open(this);
-                    if (r != null && r.privileged() && Engine.oursBlocked(this)) liftLeftover(r, "shutdown");
+                    if (r != null && r.privileged()) liftLeftover(r, "shutdown");
                 }
             }));
             f.get(SHUTDOWN_WAIT_MS, TimeUnit.MILLISECONDS);
@@ -293,7 +309,7 @@ public final class ControllerService extends Service implements Engine.Host,
     }
 
     private void post(String where, Runnable r) {
-        if (worker == null || worker.isShutdown()) return;
+        if (terminating || worker == null || worker.isShutdown()) return;
         worker.execute(() -> guarded(where, r));
     }
 

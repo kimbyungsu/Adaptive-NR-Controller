@@ -16,6 +16,8 @@ final class AppState {
     static final String WIFI = "wifi";
     static final String PHASE = "phase";
     static final String PROBLEM = "problem";
+    /** 판단 엔진이 돌고 있는지(서비스가 쓴다). */
+    static final String ENGINE = "engine";
     /** 서비스가 뜨거나 내려간 횟수. 값 자체는 쓰지 않고, 바뀌었다는 신호로 화면(저장소 구독)을 다시 그리게 한다. */
     static final String ALIVE_SEQ = "aliveSeq";
 
@@ -33,7 +35,8 @@ final class AppState {
     static TileText tile(Context c) {
         SharedPreferences p = prefs(c);
         return TileText.of(p.getBoolean(AUTO, true), p.getString(PROBLEM, null), p.getInt(MODE, TileText.MODE_UNKNOWN),
-                p.getBoolean(WIFI, false), p.getString(PHASE, null), ControllerService.running);
+                p.getBoolean(WIFI, false), p.getString(PHASE, null), ControllerService.running,
+                ControllerService.running && p.getBoolean(ENGINE, false));
     }
 
     static void setAuto(Context c, boolean on) {
@@ -42,12 +45,14 @@ final class AppState {
     }
 
     /** 서비스가 관찰한 값을 한꺼번에 쓴다. 바뀐 것이 있을 때만 타일 갱신을 요청한다. */
-    static void observed(Context c, int mode, boolean wifi, String phase, String problem) {
+    static void observed(Context c, int mode, boolean wifi, String phase, String problem, boolean engine) {
         SharedPreferences p = prefs(c);
         boolean same = p.getInt(MODE, TileText.MODE_UNKNOWN) == mode && p.getBoolean(WIFI, false) == wifi
-                && eq(p.getString(PHASE, null), phase) && eq(p.getString(PROBLEM, null), problem);
+                && eq(p.getString(PHASE, null), phase) && eq(p.getString(PROBLEM, null), problem)
+                && p.getBoolean(ENGINE, false) == engine;
         if (same) return;
-        p.edit().putInt(MODE, mode).putBoolean(WIFI, wifi).putString(PHASE, phase).putString(PROBLEM, problem).apply();
+        p.edit().putInt(MODE, mode).putBoolean(WIFI, wifi).putString(PHASE, phase).putString(PROBLEM, problem)
+                .putBoolean(ENGINE, engine).apply();
         refreshTile(c);
     }
 

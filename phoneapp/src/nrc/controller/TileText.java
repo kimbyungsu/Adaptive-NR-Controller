@@ -17,6 +17,8 @@ final class TileText {
 
     /** 자동 제어는 켜져 있는데 상주 서비스가 없을 때. 이때 타일 탭은 끄기가 아니라 다시 시작이다. */
     static final String STOPPED = "멈춤 · 눌러서 다시 시작";
+    /** 서비스는 떠 있는데 엔진이 아직 돌지 않을 때(시작 중, 또는 끄기를 마무리한 뒤 다시 켜는 중). */
+    static final String STARTING = "시작하는 중";
 
     final Look look;
     final String subtitle;
@@ -33,11 +35,13 @@ final class TileText {
      * @param wifi    인터넷이 Wi-Fi로 나가는 중
      * @param phase   컨트롤러가 하는 일(PHASE_*, 없으면 null = 5G 관리 중)
      * @param alive   상주 서비스가 지금 떠 있는지. 자동 제어가 켜져 있는데 서비스가 없으면 관리 중인 척하지 않는다
+     * @param engine  판단 엔진이 지금 돌고 있는지. 서비스는 떠 있어도 엔진이 없으면(시작 전·끄기 마무리 중) 관리 중인 척하지 않는다
      */
-    static TileText of(boolean auto, String problem, int mode, boolean wifi, String phase, boolean alive) {
+    static TileText of(boolean auto, String problem, int mode, boolean wifi, String phase, boolean alive, boolean engine) {
         if (problem != null) return new TileText(Look.UNAVAILABLE, problem);
         if (!auto) return new TileText(Look.INACTIVE, "자동 제어 꺼짐");
         if (!alive) return new TileText(Look.INACTIVE, STOPPED);
+        if (!engine) return new TileText(Look.INACTIVE, STARTING);
         if (mode == MODE_UNKNOWN) return new TileText(Look.ACTIVE, "확인 중");
         if (mode == MODE_LTE) return new TileText(Look.ACTIVE, "LTE 우선 · 대기");
         if (wifi) return new TileText(Look.ACTIVE, "Wi-Fi · 대기");
