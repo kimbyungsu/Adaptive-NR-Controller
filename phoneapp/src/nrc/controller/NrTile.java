@@ -25,8 +25,12 @@ public final class NrTile extends TileService {
 
     @Override
     public void onClick() {
-        AppState.setAuto(this, !AppState.auto(this));
-        ControllerService.ensure(this);
+        if (AppState.auto(this) && !ControllerService.running) {
+            ControllerService.ensure(this); // "멈춤" 상태의 탭 = 다시 시작(끄기 아님)
+        } else {
+            AppState.setAuto(this, !AppState.auto(this));
+            ControllerService.ensure(this);
+        }
         show();
     }
 

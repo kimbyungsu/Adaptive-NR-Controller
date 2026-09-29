@@ -4,7 +4,9 @@ import android.app.Activity;
 import android.app.StatusBarManager;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.drawable.Icon;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.View;
@@ -17,7 +19,7 @@ import android.widget.TextView;
  * 상세 화면(타일을 길게 누르거나 앱을 열면 보인다). 지금 상태, 자동 제어 켜기·끄기, 타일 추가, 알림 설정.
  * 알림 허락은 먼저 묻지 않는다(사용자가 앱 알림을 꺼 두면 알림 창에 줄이 없는 것이 이 앱의 기본 모습이다).
  */
-public final class MainActivity extends Activity {
+public final class MainActivity extends Activity implements SharedPreferences.OnSharedPreferenceChangeListener {
     private TextView status;
     private Button autoButton;
 
@@ -62,7 +64,20 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // 화면이 보이는 동안 서비스가 바꾸는 상태를 받아 다시 그린다(타일과 어긋나지 않게)
+        AppState.prefs(this).registerOnSharedPreferenceChangeListener(this);
         ControllerService.ensure(this); // 화면이 보이는 동안이라 전면 서비스 시작이 허용된다
+        refresh();
+    }
+
+    @Override
+    protected void onPause() {
+        AppState.prefs(this).unregisterOnSharedPreferenceChangeListener(this);
+        super.onPause();
+    }
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences p, String key) {
         refresh();
     }
 
@@ -74,6 +89,12 @@ public final class MainActivity extends Activity {
 
     /** 사용자에게 타일 추가를 묻는 시스템 창을 띄운다(안드로이드 13+ 공식 방법, 추가 여부는 사용자가 정한다). */
     private void requestTile() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            // 안드로이드 12에는 추가 요청 창이 없다
+            status.setText("이 폰에서는 추가 창을 띄울 수 없습니다. 빠른 설정 패널의 편집(연필) 버튼에서 '5G 자동'을 끌어다 놓아 주세요."
+                    + "\n지금 상태: " + AppState.tile(this).subtitle);
+            return;
+        }
         StatusBarManager sbm = getSystemService(StatusBarManager.class);
         sbm.requestAddTileService(new ComponentName(this, NrTile.class), TileText.LABEL,
                 Icon.createWithResource(this, R.drawable.nrc_tile), getMainExecutor(), result -> {

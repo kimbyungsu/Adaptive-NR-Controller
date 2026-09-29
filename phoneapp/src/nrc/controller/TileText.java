@@ -15,6 +15,9 @@ final class TileText {
     /** 컨트롤러가 하는 일(엔진 연결 뒤 채워진다). */
     static final String PHASE_RESTING = "resting", PHASE_PROBING = "probing";
 
+    /** 자동 제어는 켜져 있는데 상주 서비스가 없을 때. 이때 타일 탭은 끄기가 아니라 다시 시작이다. */
+    static final String STOPPED = "멈춤 · 눌러서 다시 시작";
+
     final Look look;
     final String subtitle;
 
@@ -29,10 +32,12 @@ final class TileText {
      * @param mode    사용자가 삼성 설정에서 고른 모드(MODE_*)
      * @param wifi    인터넷이 Wi-Fi로 나가는 중
      * @param phase   컨트롤러가 하는 일(PHASE_*, 없으면 null = 5G 관리 중)
+     * @param alive   상주 서비스가 지금 떠 있는지. 자동 제어가 켜져 있는데 서비스가 없으면 관리 중인 척하지 않는다
      */
-    static TileText of(boolean auto, String problem, int mode, boolean wifi, String phase) {
+    static TileText of(boolean auto, String problem, int mode, boolean wifi, String phase, boolean alive) {
         if (problem != null) return new TileText(Look.UNAVAILABLE, problem);
         if (!auto) return new TileText(Look.INACTIVE, "자동 제어 꺼짐");
+        if (!alive) return new TileText(Look.INACTIVE, STOPPED);
         if (mode == MODE_UNKNOWN) return new TileText(Look.ACTIVE, "확인 중");
         if (mode == MODE_LTE) return new TileText(Look.ACTIVE, "LTE 우선 · 대기");
         if (wifi) return new TileText(Look.ACTIVE, "Wi-Fi · 대기");

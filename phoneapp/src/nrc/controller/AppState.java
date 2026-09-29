@@ -31,7 +31,7 @@ final class AppState {
     static TileText tile(Context c) {
         SharedPreferences p = prefs(c);
         return TileText.of(p.getBoolean(AUTO, true), p.getString(PROBLEM, null), p.getInt(MODE, TileText.MODE_UNKNOWN),
-                p.getBoolean(WIFI, false), p.getString(PHASE, null));
+                p.getBoolean(WIFI, false), p.getString(PHASE, null), ControllerService.running);
     }
 
     static void setAuto(Context c, boolean on) {

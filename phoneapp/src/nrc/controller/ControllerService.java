@@ -37,12 +37,23 @@ public final class ControllerService extends Service {
     private String key;
     private volatile boolean wifi;
 
-    /** 서비스를 띄운다(이미 떠 있으면 알림 한 줄을 다시 올리고 상태를 새로 읽는다). 막히면 조용히 넘긴다. */
-    static void ensure(Context c) {
+    /**
+     * 이 프로세스에서 서비스가 떠 있는지. 앱은 한 프로세스라 타일·화면도 같은 값을 본다. 프로세스가 죽었다 다시 뜨면 false에서 시작한다.
+     * 타일·화면은 이 값이 false면 "멈춤"으로 보여 준다(관리 중인 척하지 않음).
+     */
+    static volatile boolean running;
+
+    /**
+     * 서비스를 띄운다(이미 떠 있으면 알림 한 줄을 다시 올리고 상태를 새로 읽는다). 시작 요청이 거절되면 false.
+     * 거절돼도 running이 false로 남으므로 타일·화면에 "멈춤"이 보인다.
+     */
+    static boolean ensure(Context c) {
         try {
             c.startForegroundService(new Intent(c, ControllerService.class));
-        } catch (RuntimeException ignored) {
-            // 배경 시작 제한 등: 다음 부팅·앱 열기·타일 누르기 때 다시 시도된다
+            return true;
+        } catch (RuntimeException e) {
+            AppState.refreshTile(c);
+            return false;
         }
     }
 
@@ -52,6 +63,7 @@ public final class ControllerService extends Service {
         getSystemService(NotificationManager.class).createNotificationChannel(
                 new NotificationChannel(CHANNEL, "작동 상태", NotificationManager.IMPORTANCE_MIN));
         startForeground(NOTE_ID, note());
+        running = true;
         int sub = SubscriptionManager.getDefaultDataSubscriptionId();
         key = KEY_PREFIX + sub;
         keyObs = new ContentObserver(main) {
@@ -92,7 +104,11 @@ public final class ControllerService extends Service {
         AppState.observed(this, mode(), wifi, null, null);
     }
 
-    /** 삼성 설정 키로 본 사용자 모드. 못 읽으면 모름. */
+    /**
+     * 삼성 설정 키로 본 사용자 모드. 못 읽으면 모름.
+     * 뼈대의 임시 판정이다: 엔진을 연결할 때 설정 화면이 실제로 보여 주는 USER 사유(통신사 권한으로 읽기)로 바꾸고,
+     * 이 키는 사용자 선택이 바뀐 때를 알아채는 신호로만 쓴다(DESIGN §5.13).
+     */
     private int mode() {
         try {
             String v = Settings.Global.getString(getContentResolver(), key);
@@ -122,6 +138,8 @@ public final class ControllerService extends Service {
 
     @Override
     public void onDestroy() {
+        running = false;
+        AppState.refreshTile(this);
         if (keyObs != null) getContentResolver().unregisterContentObserver(keyObs);
         if (cm != null && netCb != null) {
             try {
