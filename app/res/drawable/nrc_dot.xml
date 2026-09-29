@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  상단바 작동 표시: 작은 점. 상단바는 아이콘을 높이에 맞춰 늘리고 한 가지 색으로 칠한다(research §2.7).
+  그래서 틀(24 높이) 가운데에 작은 원(지름 7)만 그리고 나머지는 투명 여백으로 둬서 작게 보이게 한다.
+  폭은 좁게(12) 잡아 옆 아이콘과의 간격도 줄인다. 색은 상단바가 덮어쓰므로 의미가 없다.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="12dp"
+    android:height="24dp"
+    android:viewportWidth="12"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M6,8.5 a3.5,3.5 0 1,0 0.001,0 Z" />
+</vector>

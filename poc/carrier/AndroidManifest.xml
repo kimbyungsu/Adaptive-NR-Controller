@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  통신사 권한 경로 PoC(DESIGN §5.12 후속, 2026-09-29). 제품 코드 아님.
+  관문: ① 권한 주입 뒤 hasCarrierPrivileges()  ② 앱 프로세스가 직접 허용 망 변경  ③ 재부팅 뒤(ADB 없이) 권한 유지  ④ 부팅 자동 실행.
+  명령: adb shell am broadcast (대상 nrc.poc/.Cmd, 동작 nrc.poc.CMD, 문자열 op=check|block|unblock, 정수 reason=1|2)
+  기록: logcat 태그 NRCPOC, 파일 /sdcard/Android/data/nrc.poc/files/poc.log
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="nrc.poc"
+    android:versionCode="1"
+    android:versionName="0.1.0">
+
+    <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="33" />
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application android:label="NR PoC" android:hasCode="true">
+        <receiver android:name=".Cmd" android:exported="true">
+            <intent-filter>
+                <action android:name="nrc.poc.CMD" />
+            </intent-filter>
+        </receiver>
+        <receiver android:name=".Boot" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

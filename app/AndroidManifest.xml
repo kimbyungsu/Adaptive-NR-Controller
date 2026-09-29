@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  동반 앱(현재 단계: 상단바 작동 표시용 작은 점 아이콘만 담는다. 실행 코드 없음).
+  상단바는 아이콘을 "패키지 + 리소스 번호"로 불러오므로, 데몬이 이 패키지의 점 아이콘을 지정한다(DESIGN §5.8).
+  알림·빠른설정 타일·데몬 부재 감지는 이후 단계에서 이 앱에 더한다.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="nrc.companion"
+    android:versionCode="1"
+    android:versionName="0.1.0">
+
+    <uses-sdk android:minSdkVersion="31" android:targetSdkVersion="33" />
+
+    <application
+        android:hasCode="false"
+        android:label="NR 컨트롤러" />
+</manifest>
