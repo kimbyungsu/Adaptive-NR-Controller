@@ -121,6 +121,7 @@ python pc/nrctl.py restore
 - 앱은 오래 살아 있기 위해 상주 서비스로 돈다. 배터리 최적화에서 빼야 한다. 설치 프로그램이 해 준다.
 
 **지금 폰에 남아 있는 시험 상태(레퍼런스 기기, 09-29 밤)와 되돌리는 법(PC, USB 디버깅)**
+- 제품 앱 `nrc.controller`(09-30 개발 시험용, 인정 목록 3번째 줄 `2186eadb…:nrc.controller`): `adb uninstall nrc.controller`. 목록에서 이 줄만 빼려면 `clear 2 true`로 비운 뒤 남길 줄을 `add 2 true <줄>`로 다시 넣는다.
 - 시험 앱 `nrc.poc`: `adb uninstall nrc.poc`
 - 배터리 최적화 제외: `adb shell cmd deviceidle whitelist -nrc.poc`
 - 통신사 설정 덧붙임(영구): `adb shell 'CLASSPATH=/data/local/tmp/nrc/cctool.dex app_process /system/bin nrc.CcTool clear 2 true'`. 설치 전에는 다른 덧붙임이 없었으므로 이것으로 원래 목록 `[59DFFFDDCCC1929A5C089E53B05A27A42F6517B1]`으로 돌아간다. `get 2`로 확인한다.
