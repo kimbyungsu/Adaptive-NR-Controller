@@ -15,8 +15,9 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 /**
- * 시험 화면(이번 단계): 사용자가 상단바 표시의 모양·색·크기·위치를 직접 바꿔 보며 고른다.
+ * 표시 설정 화면: 사용자가 상단바 표시의 크기·위치를 직접 고르고, 모양·색을 미리 본다(사용자 요청 2026-09-30).
  * 바꾸는 즉시 상단바 표시가 따라 바뀐다(이 화면은 전체 화면이 아니라 상단바가 보인다).
+ * 시스템이 띄우는 "다른 앱 위에 표시됨" 안내를 끄는 설정 화면도 열어 준다(끄는 것은 사용자가 직접 한다).
  */
 public final class MainActivity extends Activity {
     private SharedPreferences prefs;
@@ -36,7 +37,7 @@ public final class MainActivity extends Activity {
         root.setPadding(pad, pad, pad, pad);
 
         TextView title = new TextView(this);
-        title.setText("NR 컨트롤러 — 상단바 표시 시험");
+        title.setText("NR 컨트롤러 — 표시 설정");
         title.setTextSize(20);
         root.addView(title);
 
@@ -51,11 +52,18 @@ public final class MainActivity extends Activity {
             refresh();
         }));
 
-        root.addView(label("모양"));
+        root.addView(button("③ 시스템 안내 '다른 앱 위에 표시됨' 끄는 화면 열기", v -> openOverlayNoticeSettings()));
+        root.addView(button("④ 이 앱 알림 설정 열기", v -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()))));
+        TextView tip = label("알림 창의 그 안내를 그냥 누르면 표시 허락을 끄는 화면이 열립니다. 거기서 끄면 상단바 표시도 사라지니, "
+                + "③ 버튼을 쓰거나 안내를 길게 눌러 알림만 끄세요.");
+        root.addView(tip);
+
+        root.addView(label("미리 보기 — 모양"));
         root.addView(row(
                 button("원 (5G 우선)", v -> put(Prefs.PREVIEW_SHAPE, MarkStyle.Shape.CIRCLE.name())),
                 button("사각형 (LTE 우선)", v -> put(Prefs.PREVIEW_SHAPE, MarkStyle.Shape.SQUARE.name()))));
-        root.addView(label("색"));
+        root.addView(label("미리 보기 — 색"));
         root.addView(row(
                 button("초록 (모바일)", v -> put(Prefs.PREVIEW_TONE, MarkStyle.Tone.GREEN.name())),
                 button("흰색 (Wi-Fi)", v -> put(Prefs.PREVIEW_TONE, MarkStyle.Tone.WHITE.name())),
@@ -101,8 +109,33 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // 알림 허락이 바뀌었을 수 있다: 서비스가 떠 있으면 알림 한 줄을 다시 올리게 한다
+        if (StatusService.running) startForegroundService(new Intent(this, StatusService.class));
         refresh();
     }
+
+    /**
+     * 시스템(안드로이드)이 이 앱 몫으로 만든 "다른 앱 위에 표시됨" 안내 채널의 설정 화면을 연다.
+     * 그 화면이 안 열리면 안드로이드 시스템 앱의 알림 설정 화면을, 그것도 안 되면 안내 문구를 보여 준다.
+     */
+    private void openOverlayNoticeSettings() {
+        Intent ch = new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, "android")
+                .putExtra(Settings.EXTRA_CHANNEL_ID, OVERLAY_NOTICE_CHANNEL_PREFIX + getPackageName());
+        Intent app = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, "android");
+        for (Intent i : new Intent[]{ch, app}) {
+            try {
+                startActivity(i);
+                return;
+            } catch (RuntimeException ignored) {
+                // 다음 방법으로
+            }
+        }
+        status.setText("설정 화면을 열 수 없습니다. 알림 창의 '다른 앱 위에 표시됨' 안내를 길게 눌러 알림을 꺼 주세요.");
+    }
+
+    /** 안드로이드 WindowManager가 만드는 안내 채널 이름 앞부분(AOSP AlertWindowNotification, 기기 dumpsys로 확인). */
+    static final String OVERLAY_NOTICE_CHANNEL_PREFIX = "com.android.server.wm.AlertWindowNotification - ";
 
     /** 세로 위치가 "가운데"(-1)면 1씩 옮기기 전에 지금 가운데 값에서 시작한다. */
     private int currentY() {
