@@ -1,0 +1,2 @@
+# 셸 스크립트·소스를 LF로 고정(Windows 자동 CRLF 변환이 bash 스크립트를 깨뜨리지 않게)
+* text=auto eol=lf
