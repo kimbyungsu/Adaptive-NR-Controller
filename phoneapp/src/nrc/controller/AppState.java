@@ -16,6 +16,8 @@ final class AppState {
     static final String WIFI = "wifi";
     static final String PHASE = "phase";
     static final String PROBLEM = "problem";
+    /** 서비스가 뜨거나 내려간 횟수. 값 자체는 쓰지 않고, 바뀌었다는 신호로 화면(저장소 구독)을 다시 그리게 한다. */
+    static final String ALIVE_SEQ = "aliveSeq";
 
     private AppState() {
     }
@@ -46,6 +48,16 @@ final class AppState {
                 && eq(p.getString(PHASE, null), phase) && eq(p.getString(PROBLEM, null), problem);
         if (same) return;
         p.edit().putInt(MODE, mode).putBoolean(WIFI, wifi).putString(PHASE, phase).putString(PROBLEM, problem).apply();
+        refreshTile(c);
+    }
+
+    /**
+     * 서비스가 뜨거나 내려갔다. 생존 여부는 저장하지 않는다(프로세스가 죽으면 낡으므로 ControllerService.running을 본다).
+     * 대신 저장소에 신호를 남겨 상세 화면이 다시 그리게 하고, 타일에도 갱신을 요청한다.
+     */
+    static void aliveChanged(Context c) {
+        SharedPreferences p = prefs(c);
+        p.edit().putInt(ALIVE_SEQ, p.getInt(ALIVE_SEQ, 0) + 1).apply();
         refreshTile(c);
     }
 

@@ -64,6 +64,7 @@ public final class ControllerService extends Service {
                 new NotificationChannel(CHANNEL, "작동 상태", NotificationManager.IMPORTANCE_MIN));
         startForeground(NOTE_ID, note());
         running = true;
+        AppState.aliveChanged(this);
         int sub = SubscriptionManager.getDefaultDataSubscriptionId();
         key = KEY_PREFIX + sub;
         keyObs = new ContentObserver(main) {
@@ -139,7 +140,7 @@ public final class ControllerService extends Service {
     @Override
     public void onDestroy() {
         running = false;
-        AppState.refreshTile(this);
+        AppState.aliveChanged(this);
         if (keyObs != null) getContentResolver().unregisterContentObserver(keyObs);
         if (cm != null && netCb != null) {
             try {
