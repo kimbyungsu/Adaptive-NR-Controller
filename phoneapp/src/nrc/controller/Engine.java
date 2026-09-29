@@ -257,6 +257,13 @@ final class Engine implements Policy.Env, Watcher.Listener {
             log.write("w_carrier", "why", why, "allowNr", allowNr, "result", "stopped");
             return Policy.Result.of(Policy.Kind.BLOCKED);
         }
+        String cond = blockReason();
+        if (!allowNr && cond != null) {
+            // 엔진이 이미 아는 제어 불가 조건(SIM 2개 등): 새로 막지 않는다(풀기는 허용). 외부 검증 지적: 조건을 판단 규칙에
+            // 알리는 도중 밀린 LTE 전환 예약이 먼저 실행돼 불필요한 전환이 두 번 일어났다
+            log.write("w_carrier", "why", why, "allowNr", false, "result", "blocked", "cond", cond);
+            return Policy.Result.of(Policy.Kind.BLOCKED);
+        }
         if (!radio.privileged()) {
             problem = "다시 설정 필요";
             log.write("w_carrier", "why", why, "allowNr", allowNr, "result", "no_privilege");
@@ -294,8 +301,18 @@ final class Engine implements Policy.Env, Watcher.Listener {
         boolean called = radio.writeCarrier(target);
         long after = radio.read(Radio.CARRIER);
         boolean ok = called && after >= 0 && CarrierPlan.hasNr(after) == allowNr;
+        if (ok && !allowNr && !CarrierPlan.matchesOurs(after, target)) {
+            // NR은 빠졌지만 남은 값이 우리가 쓴 값(또는 LTE_CA만 빠진 값)이 아니다: 쓴 직후 남이 바꿨거나 이 폰이 모르는 방식으로
+            // 값을 고쳤다. 우리 것으로 기억하지 않는다(외부 검증 지적: 남의 값을 우리 것으로 적으면 나중에 남의 제한을 푼다).
+            // 조용히 LTE에 묶이지 않게 문제로 알린다.
+            setOwn(own);
+            problem = "통신사 칸 확인 필요";
+            log.write("w_carrier", "why", why, "allowNr", false, "result", "after_not_ours", "before", cur,
+                    "target", target, "after", after);
+            return Policy.Result.of(Policy.Kind.FAILED);
+        }
         if (ok) {
-            setOwn(allowNr ? -1 : after); // 막았으면 실제로 남은 값(LTE_CA가 빠질 수 있음)을 기억한다
+            setOwn(allowNr ? -1 : after); // 막았으면 실제로 남은 값(우리 값 또는 LTE_CA만 빠진 값)을 기억한다
         } else if (!allowNr && CarrierPlan.hasNr(after)) {
             setOwn(own); // 막기 실패: 선기록을 되돌린다
         }
@@ -379,9 +396,14 @@ final class Engine implements Policy.Env, Watcher.Listener {
         return sims == 1 ? null : (sims > 1 ? "dual_sim" : "sim_count_unknown");
     }
 
-    /** 제어 불가 이유를 모아(SIM 조건이 먼저) 바뀌었을 때만 판단 규칙에 알린다. */
+    /** 엔진이 아는 제어 불가 이유(SIM 조건이 먼저). 없으면 null. */
+    private String blockReason() {
+        return simBlock != null ? simBlock : (userUnreadable ? "user_unreadable" : null);
+    }
+
+    /** 제어 불가 이유를 바뀌었을 때만 판단 규칙에 알린다. */
     private void applyBlocked(long t) {
-        String b = simBlock != null ? simBlock : (userUnreadable ? "user_unreadable" : null);
+        String b = blockReason();
         if (eq(b, appliedBlock)) return;
         appliedBlock = b;
         policy.setBlocked(t, b);

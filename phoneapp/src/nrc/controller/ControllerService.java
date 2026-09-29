@@ -89,6 +89,8 @@ public final class ControllerService extends Service implements Engine.Host,
         getSystemService(NotificationManager.class).createNotificationChannel(
                 new NotificationChannel(CHANNEL, "작동 상태", NotificationManager.IMPORTANCE_MIN));
         startForeground(NOTE_ID, note());
+        // 이전 실행의 "엔진 돌고 있음"을 먼저 지운다(재생성 직후 엔진이 뜨기 전 "관리 중"으로 보이지 않게, 외부 검증 보완)
+        AppState.prefs(this).edit().putBoolean(AppState.ENGINE, false).commit();
         running = true;
         AppState.aliveChanged(this);
         worker = Executors.newSingleThreadScheduledExecutor();
