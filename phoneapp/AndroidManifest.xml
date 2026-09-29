@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  제품 앱(DESIGN §5.13). 이번 단계: 상단바 표시 시험판.
-  - 앱 화면에서 사용자가 표시 모양·색·크기·위치를 바꿔 보며 고른다.
-  - 표시는 "다른 앱 위에 표시" 허락으로 그린다. 허락은 사용자가 폰 설정 화면에서 직접 켠다(앱이 그 화면을 열어 준다).
-  - 컨트롤러 판단(통신사 권한으로 쉬기)은 다음 단계에서 이 앱에 옮긴다.
+  제품 앱(DESIGN §5.13 "상태 표시 구조", 2026-09-30 사용자 결정). 이번 단계: 빠른 설정 타일 뼈대.
+  - 상주 서비스가 사용자 모드·Wi-Fi를 지켜보고 타일 "5G 자동"을 갱신한다. 판단 엔진은 다음 단계에서 옮긴다.
+  - 타일 탭 = 자동 제어 켜기·끄기, 길게 누르면 상세 화면. 다른 앱 위 표시(오버레이)는 쓰지 않는다.
+  - 알림 허락은 먼저 묻지 않는다. 사용자가 앱 알림을 꺼 두면 알림 창에 줄이 없다(안드로이드 13+).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="nrc.controller"
@@ -14,10 +14,11 @@
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
-        android:label="NR 컨트롤러"
+        android:label="5G 자동 제어"
         android:icon="@android:drawable/sym_def_app_icon">
         <activity
             android:name=".MainActivity"
@@ -26,9 +27,37 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- 타일을 길게 누르면 시스템이 이 화면을 연다 -->
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
         </activity>
         <service
-            android:name=".StatusService"
+            android:name=".ControllerService"
             android:exported="false" />
+        <service
+            android:name=".NrTile"
+            android:exported="true"
+            android:icon="@drawable/nrc_tile"
+            android:label="5G 자동"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

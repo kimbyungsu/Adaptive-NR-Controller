@@ -8,5 +8,5 @@ else to_arg() { printf '%s\n' "$1"; }; JDK="${JAVA_HOME:?}"; EXE=; fi
 OUT="$(mktemp -d)"
 trap 'rm -rf "$OUT"' EXIT
 "$JDK/bin/javac$EXE" -encoding UTF-8 -d "$(to_arg "$OUT")" \
-  "$(to_arg "$HERE/src/nrc/controller/MarkStyle.java")" "$(to_arg "$HERE/test/nrc/controller/MarkStyleTest.java")"
-"$JDK/bin/java$EXE" -cp "$(to_arg "$OUT")" nrc.controller.MarkStyleTest
+  "$(to_arg "$HERE/src/nrc/controller/TileText.java")" "$(to_arg "$HERE/test/nrc/controller/TileTextTest.java")"
+"$JDK/bin/java$EXE" -cp "$(to_arg "$OUT")" nrc.controller.TileTextTest
