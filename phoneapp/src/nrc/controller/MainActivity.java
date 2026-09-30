@@ -189,7 +189,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
     }
 
     private void buildLog() {
-        body.addView(text("최근 24시간 · 최신 것이 위. [폰 상태] 폰·기지국이 한 일 · [앱 판단] 앱이 내린 결론 · [앱이 바꿈] 앱이 실제로 5G/LTE를 바꾼 것. "
+        body.addView(text("최근 24시간 · 최신 것이 위. [폰 상태] 폰·기지국이 한 일 · [앱 판단] 앱이 내린 결론 · [앱이 바꿈] 앱이 5G/LTE를 바꾼 일과 그 결과(바꾸려다 실패한 것도 '실패'로 적어요). "
                 + "화면이 꺼진 동안의 5G 붙음·끊김은 셈에 넣지 않아 목록에도 싣지 않아요.", 13));
         logText = text("", 14);
         body.addView(logText);

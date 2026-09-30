@@ -77,6 +77,8 @@ final class NowText {
         }
         // 확인되지 않은 것은 단정하지 않는다(외부 검증 지적): 서비스 없음·확인 중·연결 없음을 따로 보인다
         String conn = !l.dataIn ? "서비스 없음" : !l.pccKnown ? "확인 중" : (l.nrActual ? "5G 사용 중" : "LTE만 사용 중");
+        boolean nrConfirmed = l.dataIn && l.pccKnown && l.nrActual;
+        String connHead = !l.dataIn ? "서비스 없음" : !l.pccKnown ? "연결 확인 중" : "지금은 LTE로 연결";
         String net = l.wifi ? "Wi-Fi" : (l.dataConnected ? "모바일 데이터" : "연결 안 됨·확인 중");
         ls.add("지금 연결: " + conn + " (상단바 표시: " + display(l.display) + ")");
         ls.add("고른 모드: " + (l.userNr ? "5G 우선" : "LTE 우선") + " · 인터넷: " + net);
@@ -113,12 +115,12 @@ final class NowText {
             case "PROBE": {
                 headline = "5G 다시 확인 중";
                 ls.add("다시 확인 시작: " + clock(l.stateSinceWall));
-                ls.add("폰을 쓴 시간 " + (l.useMs / 1000) + "/" + (l.pActive / 1000) + "초");
+                ls.add("데이터를 주고받은 시간 " + (l.useMs / 1000) + "/" + (l.pActive / 1000) + "초 (화면이 켜져 있을 때만 셈)");
                 ls.add("끊김 " + l.probeDrops + "번 (" + l.nProbe + "번이면 다시 쉬기)");
                 if (l.evalStart >= 0) ls.add(Words.minSec(l.evalStart + l.pMax - now) + " 안에 판정");
                 else ls.add("바꾼 직후라 연결이 자리 잡는 중(끝나면 확인 시작)");
                 if (l.hold != null) ls.add(Words.holdSentence(l.hold));
-                next = "폰을 " + (l.pActive / 1000) + "초 쓰는 동안 끊김이 " + l.nProbe + "번 미만이면 통과예요.";
+                next = "데이터를 " + (l.pActive / 1000) + "초 주고받는 동안 끊김이 " + l.nProbe + "번 미만이면 통과예요.";
                 break;
             }
             default: {
@@ -128,8 +130,11 @@ final class NowText {
                     next = "Wi-Fi가 끊기면 다시 지켜봐요.";
                     break;
                 }
-                headline = "5G 사용 중 · " + ("GOOD".equals(l.state) ? "안정적" : "끊김이 있어 지켜보는 중");
-                ls.add("폰을 쓰는 중 " + (l.windowMs / 60_000) + "분 안에 5G가 " + l.nDrop + "번 끊기면 LTE로 잠깐 쉬어요.");
+                // 머리글의 연결은 확인된 실제 연결만(외부 검증 지적: 판단 상태만 보고 "5G 사용 중"이라 하면 실제 LTE와 모순)
+                boolean good = "GOOD".equals(l.state);
+                if (nrConfirmed) headline = "5G 사용 중 · " + (good ? "안정적" : "끊김이 있어 지켜보는 중");
+                else headline = connHead + " · " + (good ? "5G를 지켜보는 중" : "끊김이 있어 지켜보는 중");
+                ls.add("화면을 켜고 데이터를 주고받는 중 " + (l.windowMs / 60_000) + "분 안에 5G가 " + l.nDrop + "번 끊기면 LTE로 잠깐 쉬어요.");
                 String count = "최근 " + (l.windowMs / 60_000) + "분 동안 끊김 " + l.drops + "번 (" + l.nDrop + "번이면 쉬기)";
                 if (l.oldestDrop >= 0) count += " · 가장 오래된 끊김은 " + Words.minSec(l.oldestDrop + l.windowMs - now) + " 뒤 셈에서 빠져요";
                 ls.add(count);

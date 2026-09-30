@@ -407,6 +407,30 @@ final class Policy {
         return state == State.COOLDOWN;
     }
 
+    /**
+     * 컨트롤러가 걸어 둔 5G 막음이 칸에서 사라졌다(다른 쪽이 값을 덮었거나, 사용자가 직접 풀었거나, 막으려던 때 이미 다른 쪽이
+     * 막아 두었음). "막아 둔 LTE"로 믿은 채 남은 쉬는 시간을 세면 화면은 쉬는 중, 오늘 집계는 쉰 시간으로 남아 실제와 어긋난다
+     * (외부 검증 지적, 2026-09-30) → 되돌릴 것이 없으니 쉬기를 여기서 끝내고 지켜보기로 간다. 단계(level)는 그대로 둔다.
+     * 컨트롤러 쓰기가 아니므로 정착 시간 초과는 SAFE_STOP이 아니다(사용자 모드 변경과 같음).
+     */
+    void blockGone(long t, String why) {
+        t = touch(t);
+        if (!nrAllowedNow) {
+            nrAllowedNow = true;
+            pendingRestore = false;
+            env.log("block_gone", "why", why, "state", state.name());
+            if (state == State.COOLDOWN) {
+                clearProbe();
+                clear();
+                to(t, State.WATCH, "block_gone");
+                syncHold(t);
+                if (controlled()) startSettle(t, false);
+            }
+            env.persist(state, nrAllowedNow);
+        }
+        after(t);
+    }
+
     /** 종료 요청. 컨트롤러가 막아 둔 LTE면 원래 모드로 되돌린 뒤 끝낸다. 통화 중이면 통화가 끝날 때까지 미룬다. */
     void stop(long t) {
         t = touch(t);

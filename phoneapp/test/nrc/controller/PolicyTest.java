@@ -151,6 +151,7 @@ public final class PolicyTest {
         userChoiceBeatsOverdueProbe();
         blockedWithRetryHintProbesAtHint();
         userPicks5gWhileActualLteRetests();
+        blockGoneEndsRest();
         System.out.println((failed == 0 ? "OK " : "FAILED " + failed + " / ") + passed + " checks passed");
         if (failed > 0) System.exit(1);
     }
@@ -458,6 +459,45 @@ public final class PolicyTest {
         pol.advance(201 * S);
         check("유예 끝(200초) 뒤 되돌리고 종료", env.writes, "[lte@90, nr@200]");
         check("종료 완료", env.stopDone, 1);
+    }
+
+    /**
+     * 쉬는 중에 앱의 막음이 칸에서 사라지면(다른 쪽이 덮음·사용자가 직접 풂) 쉬기를 끝낸다. 되돌릴 것이 없으니 쓰지 않고,
+     * 남은 쉬는 시간이 지나도 재시험 쓰기가 없다. 쉬는 중이 아니면 아무 일도 없다(외부 검증 지적, 2026-09-30).
+     */
+    static void blockGoneEndsRest() {
+        Object[] o = start();
+        Policy pol = (Policy) o[0];
+        FakeEnv env = (FakeEnv) o[1];
+        pol.blockGone(5 * S, "open");
+        check("쉬는 중이 아니면 기록 없음", env.logged("block_gone"), false);
+        drop(pol, 10);
+        drop(pol, 50);
+        drop(pol, 90);
+        check("쉬는 중", pol.state, Policy.State.COOLDOWN);
+        pol.restriction(100 * S, 2, false); // 다른 쪽이 통신사 칸을 덮음
+        pol.blockGone(100 * S, "external");
+        check("쉬기 끝 → 지켜보기", pol.state, Policy.State.WATCH);
+        check("막아 둔 LTE 아님", pol.nrAllowedNow, true);
+        check("다른 쪽 막음 동안 보류", pol.holdWhy(), "restricted");
+        pol.restriction(120 * S, 2, true); // 사용자가 [남은 5G 막음 풀기]
+        pol.advance(400 * S); // 원래 쉬기 끝(390초)이 지나도
+        check("되돌리기·재시험 쓰기 없음", env.writes, "[lte@90]");
+        check("재시험으로 가지 않음", pol.state == Policy.State.PROBE, false);
+        // 끄기를 기다리던 중(통화)이라도 막음이 사라지면 되돌릴 것 없이 끝난다
+        Object[] o2 = start();
+        Policy p2 = (Policy) o2[0];
+        FakeEnv e2 = (FakeEnv) o2[1];
+        drop(p2, 10);
+        drop(p2, 50);
+        drop(p2, 90);
+        p2.call(150 * S, 2);
+        p2.stop(160 * S);
+        check("통화 중 끄기는 미룸", e2.stopDone, 0);
+        p2.blockGone(170 * S, "open");
+        check("막음이 사라지면 쓰기 없이 끝", e2.writes, "[lte@90]");
+        check("끄기 완료", e2.stopDone, 1);
+        check("되돌린 것으로 봄", e2.lastStopRestored, Boolean.TRUE);
     }
 
     static void keepLteMakesLteOriginal() {

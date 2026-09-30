@@ -321,9 +321,9 @@ final class Engine implements Policy.Env, Watcher.Listener {
             saveSummary();
         }
         if (screenOn) {
-            String how = !active ? "폰 안 쓰는 중 · 셈에 안 넣음"
-                    : counted ? "폰 쓰는 중 · " + countText(t, byProbe)
-                    : "폰 쓰는 중 · 지금은 셈에 안 넣음";
+            String how = !active ? "데이터를 주고받지 않는 중 · 셈에 안 넣음"
+                    : counted ? "데이터 주고받는 중 · " + countText(t, byProbe)
+                    : "데이터 주고받는 중 · 지금은 셈에 안 넣음";
             tl.add(Timeline.Cat.OBS, "5G 끊김(" + how + ")");
         }
         after(t);
@@ -600,6 +600,17 @@ final class Engine implements Policy.Env, Watcher.Listener {
         }
     }
 
+    /**
+     * 판단 규칙은 앱이 5G를 막아 둔 채라고 아는데(쉬는 중 등) 칸에 앱의 막음 기록이 없다 → 쉬기를 끝낸다(Policy.blockGone).
+     * 기록은 reconcile이 칸을 읽어 "5G 허용됨"이나 "남의 값"일 때만 지운다. 읽지 못하면 기록을 두므로 여기서도 아무것도 하지 않는다.
+     */
+    private void checkBlockGone(long t) {
+        if (stopped || selfTesting || policy == null || policy.nrAllowedNow || own() >= 0) return;
+        long c = radio.read(Radio.CARRIER);
+        if (c < 0) return;
+        policy.blockGone(t, CarrierPlan.hasNr(c) ? "open" : "external");
+    }
+
     private void updateNetOk(long t) {
         boolean ok = dataIn && dataConn == TelephonyManager.DATA_CONNECTED;
         if (netOkLast == null || netOkLast != ok) {
@@ -611,6 +622,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
     /** 사건 처리 끝: 우리 막음 정리, 다음 확인 시각 예약, 타일·화면 갱신. */
     private void after(long t) {
         reconcile("event", false);
+        checkBlockGone(t);
         reschedule();
         publish();
     }
@@ -735,7 +747,9 @@ final class Engine implements Policy.Env, Watcher.Listener {
                 stateWhy = why;
                 if ("COOLDOWN".equals(to)) restWhy = why;
                 String text;
-                if ("COOLDOWN".equals(to)) {
+                if ("block_gone".equals(why)) {
+                    break; // "block_gone" 줄이 이미 알렸다
+                } else if ("COOLDOWN".equals(to)) {
                     text = ("manual_test".equals(why) ? "시험 명령으로 " : "") + "LTE로 잠깐 쉬기로 함: " + Words.why(why);
                 } else if ("PROBE".equals(to)) {
                     text = "쉬는 시간 끝 → 5G 다시 확인 시작";
@@ -801,6 +815,10 @@ final class Engine implements Policy.Env, Watcher.Listener {
             }
             case "own_cleared":
                 if ("EXTERNAL".equals(str(kv, "as"))) tl.add(Timeline.Cat.JUDGE, "다른 쪽이 값을 바꿔 앱의 막음 기록을 지움");
+                break;
+            case "block_gone":
+                tl.add(Timeline.Cat.JUDGE, "앱이 걸어 둔 5G 막음이 없어져 쉬기를 끝냄("
+                        + ("open".equals(str(kv, "why")) ? "5G가 다시 허용돼 있음" : "다른 쪽이 값을 바꿈") + ")");
                 break;
             case "lift_deferred":
                 tl.add(Timeline.Cat.JUDGE, "5G 막음 풀기를 통화 뒤로 미룸");
@@ -997,7 +1015,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
                 return;
             }
             if (!nrBefore) {
-                s.line("폰을 쓰지 않아 원래 5G가 붙어 있지 않았음 → 연결 변화 확인은 건너뜀", true);
+                s.line("데이터를 주고받지 않아 원래 5G가 붙어 있지 않았음 → 연결 변화 확인은 건너뜀", true);
                 restoreSelfTest(s, true);
             } else if (watcher != null && !watcher.nrConnected()) {
                 s.line("실제로 5G가 떨어짐(" + secs(now() - blockedAt) + "초)", true);

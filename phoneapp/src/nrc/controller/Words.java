@@ -38,7 +38,7 @@ final class Words {
         if (w.endsWith("_from_lte")) return "시작할 때 LTE로 남아 있어 곧 5G를 다시 확인";
         switch (w) {
             case "drops":
-                return "폰을 쓰는 중 2분 안에 5G가 3번 이상 끊김";
+                return "화면을 켜고 데이터를 주고받는 중 2분 안에 5G가 3번 이상 끊김";
             case "oos":
                 return "데이터가 아예 끊김";
             case "dwell":
@@ -52,13 +52,13 @@ final class Words {
             case "cooldown_end":
                 return "쉬는 시간이 끝남";
             case "probe_pass":
-                return "통과(폰을 60초 쓰는 동안 끊김이 2번 미만)";
+                return "통과(데이터를 60초 주고받는 동안 끊김이 2번 미만)";
             case "probe_undecided":
-                return "판정 못 함(5분 안에 폰을 60초 쓰지 않음)";
+                return "판정 못 함(5분 안에 데이터를 주고받은 시간이 60초가 안 됨)";
             case "t_clear":
                 return "5분 동안 끊김 없음";
             case "active_drop":
-                return "폰을 쓰는 중 5G가 끊김";
+                return "데이터를 주고받는 중 5G가 끊김";
             case "start":
                 return "자동 제어 시작";
             case "user_mode":
@@ -75,6 +75,8 @@ final class Words {
                 return "다시 바꿀 수 있게 됨";
             case "resume":
                 return "다시 시작";
+            case "block_gone":
+                return "앱이 걸어 둔 5G 막음이 없어져 쉬기를 끝냄";
             case "settle_timeout":
                 return "바꾼 뒤 30초 안에 연결이 안정되지 않음";
             default:

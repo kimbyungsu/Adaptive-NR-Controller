@@ -27,14 +27,29 @@ public final class NowTextTest {
         l.oldestDrop = now - 30_000;
         t = NowText.of(l, on, now, false, false);
         is(t.headline.equals("5G 사용 중 · 끊김이 있어 지켜보는 중"), "머리글 " + t.headline);
-        is(has(t, "폰을 쓰는 중 2분 안에 5G가 3번 끊기면 LTE로 잠깐 쉬어요."), "기준 문장");
+        is(has(t, "화면을 켜고 데이터를 주고받는 중 2분 안에 5G가 3번 끊기면 LTE로 잠깐 쉬어요."), "기준 문장");
         is(has(t, "최근 2분 동안 끊김 1번 (3번이면 쉬기) · 가장 오래된 끊김은 1분 30초 뒤 셈에서 빠져요"), "최근 끊김");
         is(has(t, "지금 연결: 5G 사용 중 (상단바 표시: 5G)"), "지금 연결과 상단바");
         is(has(t, "고른 모드: 5G 우선 · 인터넷: 모바일 데이터"), "고른 모드·인터넷");
         l.state = "GOOD";
         t = NowText.of(l, on, now, false, false);
         is(t.headline.equals("5G 사용 중 · 안정적"), "안정적");
+        // 실제 연결이 LTE·확인 전·서비스 없음이면 머리글이 "5G 사용 중"이라 하지 않는다
+        l.nrActual = false;
+        t = NowText.of(l, on, now, false, false);
+        is(t.headline.equals("지금은 LTE로 연결 · 5G를 지켜보는 중") && has(t, "지금 연결: LTE만 사용 중"), "안정적·실제 LTE " + t.headline);
         l.state = "WATCH";
+        t = NowText.of(l, on, now, false, false);
+        is(t.headline.equals("지금은 LTE로 연결 · 끊김이 있어 지켜보는 중"), "지켜봄·실제 LTE " + t.headline);
+        l.pccKnown = false;
+        t = NowText.of(l, on, now, false, false);
+        is(t.headline.startsWith("연결 확인 중 · ") && !t.headline.contains("5G 사용 중"), "확인 전 머리글 " + t.headline);
+        l.pccKnown = true;
+        l.dataIn = false;
+        t = NowText.of(l, on, now, false, false);
+        is(t.headline.startsWith("서비스 없음 · "), "서비스 없음 머리글 " + t.headline);
+        l.dataIn = true;
+        l.nrActual = true;
 
         // 확인 안 된 연결은 단정하지 않는다
         l.dataIn = false;
@@ -70,7 +85,7 @@ public final class NowTextTest {
         l.display = 1;
         t = NowText.of(l, on, now, false, false);
         is(t.headline.equals("LTE로 잠깐 쉬는 중"), "쉬기 머리글");
-        is(has(t, "이유: 폰을 쓰는 중 2분 안에 5G가 3번 이상 끊김"), "쉬기 이유");
+        is(has(t, "이유: 화면을 켜고 데이터를 주고받는 중 2분 안에 5G가 3번 이상 끊김"), "쉬기 이유");
         is(has(t, "2분 5초 뒤 5G 다시 확인"), "남은 시간");
         is(has(t, "지금 연결: LTE만 사용 중 (상단바 표시: LTE+)"), "쉬는 중 연결");
         l.coolUntil = now - 1;
@@ -86,7 +101,7 @@ public final class NowTextTest {
         l.evalStart = now - 60_000;
         t = NowText.of(l, on, now, false, false);
         is(t.headline.equals("5G 다시 확인 중"), "다시 확인 머리글");
-        is(has(t, "폰을 쓴 시간 37/60초"), "쓴 시간");
+        is(has(t, "데이터를 주고받은 시간 37/60초") && t.next.contains("데이터를 60초 주고받는 동안"), "데이터 시간");
         is(has(t, "끊김 1번 (2번이면 다시 쉬기)"), "끊김");
         is(has(t, "4분 0초 안에 판정"), "판정까지");
         l.evalStart = -1;
