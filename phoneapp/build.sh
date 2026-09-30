@@ -27,12 +27,15 @@ mkdir -p "$OUT"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 cp -r "$HERE/res" "$HERE/AndroidManifest.xml" "$WORK/"
+[ -d "$HERE/assets" ] && cp -r "$HERE/assets" "$WORK/"
+ASSETS=()
+[ -d "$WORK/assets" ] && ASSETS=(-A "$(to_arg "$WORK/assets")")
 mkdir -p "$WORK/gen" "$WORK/classes" "$WORK/dex"
 W="$(to_arg "$WORK")"
 
 "$BT/aapt2$EXE" compile --dir "$W/res" -o "$W/res.zip"
 "$BT/aapt2$EXE" link -o "$W/unsigned.apk" -I "$JAR" --manifest "$W/AndroidManifest.xml" \
-  --java "$W/gen" "$W/res.zip"
+  --java "$W/gen" "${ASSETS[@]}" "$W/res.zip"
 
 SRC=()
 while IFS= read -r f; do SRC+=("$(to_arg "$f")"); done < <(find "$HERE/src" "$WORK/gen" -name '*.java')

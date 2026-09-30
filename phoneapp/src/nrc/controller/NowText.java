@@ -41,6 +41,10 @@ final class NowText {
         }
     }
 
+    /** 남의(또는 기록 없는) 5G 막음 안내. 앱은 스스로 풀지 않고 사용자가 버튼으로 푼다. */
+    static final String EXTERNAL_LINE = "5G가 다른 쪽에 의해 막혀 있어요 — 통신사 앱이거나, 앱을 지웠다 다시 설치해 앱의 기록이 "
+            + "없어진 막음일 수 있어요. 아래 [남은 5G 막음 풀기]로 풀 수 있어요.";
+
     static String clock(long wall) {
         return new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date(wall));
     }
@@ -50,16 +54,18 @@ final class NowText {
      * @param tile 타일 글(엔진이 없을 때 머리글로 쓴다)
      * @param now      부팅 후 경과(ms, Live와 같은 시계)
      * @param leftover 이 SIM에 앱이 걸어 둔 5G 막음 기록이 남아 있는지(엔진이 없어도 해제를 기다리는 중일 수 있다)
+     * @param external 통신사 칸에 앱이 건 것이 아닌 5G 막음이 있는지(다른 쪽, 또는 앱을 지웠다 다시 설치해 기록이 없어진 막음)
      */
-    static NowText of(Live l, TileText tile, long now, boolean leftover) {
+    static NowText of(Live l, TileText tile, long now, boolean leftover, boolean external) {
         List<String> ls = new ArrayList<>();
+        if (external) ls.add(EXTERNAL_LINE);
         if (l == null) {
             // 판단이 꺼져 있다고 곧 순정은 아니다(외부 검증 지적): 남은 막음·문제를 먼저 알린다
             if (leftover) {
                 ls.add("앱이 걸어 둔 5G 막음이 아직 남아 있어요. 통화 중이면 통화가 끝난 뒤, 아니면 30초마다 다시 풀어요.");
             }
             if (tile.look == TileText.Look.UNAVAILABLE) ls.add("문제: " + tile.subtitle + " — 지금은 앱이 5G/LTE를 바꿀 수 없어요.");
-            if (!leftover && tile.look != TileText.Look.UNAVAILABLE) {
+            if (!leftover && !external && tile.look != TileText.Look.UNAVAILABLE) {
                 ls.add("판단이 꺼져 있고 남은 막음도 없어, 삼성 설정대로 순정(폰 기본 동작)이에요.");
             }
             String next = leftover ? "막음이 풀리면 순정으로 돌아가요."

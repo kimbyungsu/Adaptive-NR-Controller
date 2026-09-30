@@ -21,6 +21,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.view.View;
+import android.webkit.WebView;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -38,8 +39,8 @@ import java.util.Locale;
  * 화면이 보이는 동안 1초마다 다시 그린다(남은 시간·진행). 알림 허락은 먼저 묻지 않는다.
  */
 public final class MainActivity extends Activity implements SharedPreferences.OnSharedPreferenceChangeListener {
-    private static final int TAB_NOW = 0, TAB_LOG = 1, TAB_DETAIL = 2, TAB_SETTINGS = 3;
-    private static final String[] TAB_NAMES = {"지금", "활동 기록", "상세", "설정"};
+    private static final int TAB_NOW = 0, TAB_LOG = 1, TAB_DETAIL = 2, TAB_SETTINGS = 3, TAB_HELP = 4;
+    private static final String[] TAB_NAMES = {"지금", "활동 기록", "상세", "설정", "도움말"};
     private static final int C_OBS = 0xFF8A8A8A, C_JUDGE = 0xFF3B82F6, C_ACT = 0xFFF59E0B, C_OK = 0xFF16A34A, C_BAD = 0xFFDC2626;
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -53,7 +54,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
     private int tab = TAB_NOW;
     private float d;
     private LinearLayout body;
-    private final Button[] tabs = new Button[4];
+    private final Button[] tabs = new Button[TAB_NAMES.length];
 
     // 지금 칸
     private TextView headline;
@@ -62,6 +63,8 @@ public final class MainActivity extends Activity implements SharedPreferences.On
     private TextView today;
     private Button selfTestButton;
     private TextView selfTestOut;
+    private Button liftButton;
+    private TextView liftOut;
     private SpannableStringBuilder selfTestText = new SpannableStringBuilder();
     private boolean selfTestRunning;
     // 활동 기록·상세·설정 칸
@@ -85,7 +88,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         root.addView(title);
         LinearLayout tabRow = new LinearLayout(this);
         tabRow.setOrientation(LinearLayout.HORIZONTAL);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < TAB_NAMES.length; i++) {
             final int which = i;
             tabs[i] = button(TAB_NAMES[i], v -> show(which));
             tabRow.addView(tabs[i], new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
@@ -126,7 +129,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
 
     private void show(int which) {
         tab = which;
-        for (int i = 0; i < 4; i++) tabs[i].setTypeface(i == which ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+        for (int i = 0; i < TAB_NAMES.length; i++) tabs[i].setTypeface(i == which ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
         body.removeAllViews();
         switch (which) {
             case TAB_NOW:
@@ -138,11 +141,23 @@ public final class MainActivity extends Activity implements SharedPreferences.On
             case TAB_DETAIL:
                 buildDetail();
                 break;
+            case TAB_HELP:
+                buildHelp();
+                break;
             default:
                 buildSettings();
                 break;
         }
         render();
+    }
+
+    /** 도움말: 경우별 그림 설명(앱 안에 담긴 help.html, 인터넷 없이 보인다). 배포용 설명서와 같은 원본. */
+    private void buildHelp() {
+        WebView w = new WebView(this);
+        w.getSettings().setJavaScriptEnabled(false);
+        w.loadUrl("file:///android_asset/help.html");
+        body.addView(w, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
     }
 
     private void buildNow() {
@@ -154,6 +169,10 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         nowNext = text("", 15);
         nowNext.setTypeface(Typeface.DEFAULT_BOLD);
         body.addView(nowNext);
+        liftButton = button("남은 5G 막음 풀기", v -> confirmLiftExternal());
+        body.addView(liftButton);
+        liftOut = text("", 14);
+        body.addView(liftOut);
         body.addView(section("오늘의 활동(자정부터)"));
         today = text("", 15);
         body.addView(today);
@@ -213,6 +232,8 @@ public final class MainActivity extends Activity implements SharedPreferences.On
             case TAB_DETAIL:
                 renderDetail();
                 break;
+            case TAB_HELP:
+                break; // 도움말은 고정 내용
             default:
                 renderSettings();
                 break;
@@ -222,8 +243,14 @@ public final class MainActivity extends Activity implements SharedPreferences.On
     private void renderNow() {
         Live l = ControllerService.live();
         Radio r = Radio.open(this);
-        boolean leftover = r != null && Engine.ownMask(this, r.sub) >= 0; // 엔진이 없어도 남은 막음이 있을 수 있다
-        NowText t = NowText.of(l, AppState.tile(this), SystemClock.elapsedRealtime(), leftover);
+        long own = r == null ? -1 : Engine.ownMask(this, r.sub);
+        boolean leftover = own >= 0; // 엔진이 없어도 남은 막음이 있을 수 있다
+        // 앱이 건 것이 아닌 5G 막음: 엔진이 있으면 엔진의 주기 판정, 없으면 지금 읽어서
+        boolean external = l != null ? l.carrierExternal
+                : r != null && r.privileged()
+                && CarrierPlan.classify(r.read(Radio.CARRIER), own) == CarrierPlan.Carrier.EXTERNAL;
+        NowText t = NowText.of(l, AppState.tile(this), SystemClock.elapsedRealtime(), leftover, external);
+        liftButton.setVisibility(external ? View.VISIBLE : View.GONE);
         headline.setText(t.headline);
         StringBuilder sb = new StringBuilder();
         for (String s : t.lines) sb.append("· ").append(s).append('\n');
@@ -386,6 +413,41 @@ public final class MainActivity extends Activity implements SharedPreferences.On
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         selfTestText.append(text).append('\n');
         if (selfTestOut != null) selfTestOut.setText(selfTestText);
+    }
+
+    // ================================================================ 남은 5G 막음 풀기(사용자 요청)
+
+    private void confirmLiftExternal() {
+        new AlertDialog.Builder(this)
+                .setTitle("남은 5G 막음 풀기")
+                .setMessage("이 막음은 앱이 건 것으로 확인되지 않아요. 통신사 앱이 건 막음일 수도 있고, 앱을 지웠다 다시 설치해 "
+                        + "앱의 기록이 없어진 막음일 수도 있어요. 풀면 5G가 다시 허용돼요(연결이 1~2초 끊길 수 있어요). 풀까요?")
+                .setPositiveButton("풀기", (dlg, w) -> startLiftExternal())
+                .setNegativeButton("취소", null)
+                .show();
+    }
+
+    private void startLiftExternal() {
+        liftOut.setText("");
+        liftButton.setEnabled(false);
+        boolean posted = ControllerService.liftExternal(new Engine.TestSink() {
+            @Override
+            public void line(String text, boolean ok) {
+                main.post(() -> liftOut.setText((ok ? "✓ " : "✗ ") + text));
+            }
+
+            @Override
+            public void done(boolean pass) {
+                main.post(() -> {
+                    liftButton.setEnabled(true);
+                    render();
+                });
+            }
+        });
+        if (!posted) {
+            liftOut.setText("✗ 앱이 떠 있지 않아 풀 수 없어요");
+            liftButton.setEnabled(true);
+        }
     }
 
     // ================================================================ 설정 칸 동작

@@ -90,6 +90,8 @@ final class Engine implements Policy.Env, Watcher.Listener {
     private long stateSinceWall = System.currentTimeMillis();
     private String restWhy;
     private long oosAtT = -1;
+    /** 통신사 칸에 앱이 건 것이 아닌 5G 막음이 있다(주기 확인에서 갱신). */
+    private boolean carrierExternal;
     private boolean selfTesting;
     private long quietUntil = -1;
     /** 마지막 자가 점검 시각(부팅 후 경과)을 담는 저장소 키. 엔진을 새로 만들어도 1분 간격이 유지된다(외부 검증 지적). */
@@ -556,7 +558,10 @@ final class Engine implements Policy.Env, Watcher.Listener {
         if (p >= 0) policy.restriction(t, Radio.POWER, CarrierPlan.hasNr(p));
         if (e >= 0) policy.restriction(t, Radio.ENABLE_2G, CarrierPlan.hasNr(e));
         CarrierPlan.Carrier k = CarrierPlan.classify(c, own());
-        if (k != CarrierPlan.Carrier.UNKNOWN) policy.restriction(t, Radio.CARRIER, k != CarrierPlan.Carrier.EXTERNAL);
+        if (k != CarrierPlan.Carrier.UNKNOWN) {
+            carrierExternal = k == CarrierPlan.Carrier.EXTERNAL;
+            policy.restriction(t, Radio.CARRIER, !carrierExternal);
+        }
     }
 
     /**
@@ -675,6 +680,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
         l.level = policy.level;
         l.problem = problem;
         l.selfTesting = selfTesting;
+        l.carrierExternal = carrierExternal;
         live = l;
     }
 
@@ -844,6 +850,33 @@ final class Engine implements Policy.Env, Watcher.Listener {
             default:
                 return why;
         }
+    }
+
+    /**
+     * 사용자가 [남은 5G 막음 풀기]로 남의(또는 기록 없는) 막음을 풀었다(서비스가 작업 스레드에서 부른다).
+     * 오늘의 활동 마지막 개입에 남기고, 제한 판정을 곧바로 새로 한다.
+     */
+    void userLifted(String text) {
+        if (stopped) return;
+        noteAction(text);
+        long t = now();
+        refreshRestrictions(t);
+        after(t);
+    }
+
+    /** 엔진이 없을 때 오늘의 활동 마지막 개입만 남긴다(엔진이 있으면 userLifted를 쓴다: 엔진의 셈이 덮어쓰지 않게). */
+    static void noteActionWithoutEngine(Context c, String text) {
+        SharedPreferences p = c.getSharedPreferences(SUMMARY_STORE, Context.MODE_PRIVATE);
+        DaySummary d = DaySummary.load(p.getString(SUMMARY_KEY, null));
+        Calendar cal = Calendar.getInstance();
+        String day = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date(cal.getTimeInMillis()));
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        d.roll(day, cal.getTimeInMillis());
+        d.onAction(System.currentTimeMillis(), text);
+        p.edit().putString(SUMMARY_KEY, d.save()).apply();
     }
 
     /** 앱이 실제로 망을 바꾼 일을 오늘의 활동 "마지막 개입"에 남긴다. */

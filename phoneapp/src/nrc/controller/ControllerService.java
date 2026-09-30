@@ -112,7 +112,7 @@ public final class ControllerService extends Service implements Engine.Host,
     static boolean selfTest(Engine.TestSink sink) {
         ControllerService s = current;
         if (s == null) return false;
-        s.post("self_test", () -> {
+        return s.post("self_test", () -> {
             if (s.engine != null) {
                 s.engine.selfTest(sink);
             } else {
@@ -120,7 +120,61 @@ public final class ControllerService extends Service implements Engine.Host,
                 sink.done(false);
             }
         });
-        return true;
+    }
+
+    /**
+     * 사용자가 [남은 5G 막음 풀기]를 눌렀다(확인 창 뒤). 앱이 건 것이 아닌 통신사 칸 5G 막음을 푼다 — 앱이 스스로는 절대 풀지 않는
+     * 막음이라 사용자 요청일 때만. 통화 확인은 쓰기 바로 앞. 결과 줄은 작업 스레드에서 sink로 온다. 서비스가 없으면 false.
+     */
+    static boolean liftExternal(Engine.TestSink sink) {
+        ControllerService s = current;
+        if (s == null) return false;
+        return s.post("lift_external", () -> s.doLiftExternal(sink));
+    }
+
+    private void doLiftExternal(Engine.TestSink sink) {
+        Radio r = radio != null ? radio : Radio.open(this);
+        if (r == null || !r.privileged()) {
+            sink.line("5G/LTE 전환 권한이 없어 풀 수 없어요(처음 설정 필요)", false);
+            sink.done(false);
+            return;
+        }
+        long own = Engine.ownMask(this, r.sub);
+        long c = r.read(Radio.CARRIER);
+        CarrierPlan.Carrier k = CarrierPlan.classify(c, own);
+        if (k == CarrierPlan.Carrier.UNKNOWN) {
+            sink.line("값을 읽지 못했어요. 잠시 뒤 다시 눌러 주세요", false);
+            sink.done(false);
+            return;
+        }
+        if (k == CarrierPlan.Carrier.OPEN) {
+            sink.line("이미 5G가 허용돼 있어요", true);
+            sink.done(true);
+            return;
+        }
+        if (k == CarrierPlan.Carrier.OURS) {
+            sink.line("앱이 건 막음이라 앱이 알아서 풀어요(쉬는 중이면 쉬는 시간이 끝날 때)", true);
+            sink.done(true);
+            return;
+        }
+        String g = r.callGuard(); // 쓰기 바로 앞
+        if (g != null) {
+            sink.line("통화 중이라 지금은 풀 수 없어요. 통화가 끝난 뒤 다시 눌러 주세요", false);
+            sink.done(false);
+            return;
+        }
+        boolean called = r.writeCarrier(CarrierPlan.target(c, true));
+        long after = r.read(Radio.CARRIER);
+        boolean ok = called && CarrierPlan.hasNr(after);
+        journal.write("lift_external", "ok", ok, "before", c, "after", after, "own", own);
+        String text = "사용자 요청으로 남아 있던 5G 막음을 풂";
+        timeline.add(Timeline.Cat.ACT, ok ? text : "남아 있던 5G 막음 풀기 실패");
+        if (ok) {
+            if (engine != null) engine.userLifted(text);
+            else Engine.noteActionWithoutEngine(this, text);
+        }
+        sink.line(ok ? "풀었어요. 5G가 다시 허용됐어요" : "풀지 못했어요", ok);
+        sink.done(ok);
     }
 
     /** 개발 시험(TestCommand): 엔진에 시험용 쉬기를 넘긴다. 서비스·엔진이 없으면 false. */
@@ -370,9 +424,15 @@ public final class ControllerService extends Service implements Engine.Host,
         });
     }
 
-    private void post(String where, Runnable r) {
-        if (terminating || worker == null || worker.isShutdown()) return;
-        worker.execute(() -> guarded(where, r));
+    /** 작업 스레드에 넘긴다. 서비스가 끝나는 중이라 넘기지 못하면 false(버튼이 결과를 기다리며 멈춰 있지 않게). */
+    private boolean post(String where, Runnable r) {
+        if (terminating || worker == null || worker.isShutdown()) return false;
+        try {
+            worker.execute(() -> guarded(where, r));
+            return true;
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            return false;
+        }
     }
 
     private void guarded(String where, Runnable r) {

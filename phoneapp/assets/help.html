@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5G 자동 제어 도움말</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #5b636d; --card: #f5f6f8; --line: #d6dae0;
+    --user: #7c3aed; --phone: #6b7280; --app: #2563eb; --warn: #b45309; --ok: #15803d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121416; --fg: #e8eaed; --muted: #a3aab3; --card: #1c1f23; --line: #30353b;
+      --user: #a78bfa; --phone: #9ca3af; --app: #60a5fa; --warn: #fbbf24; --ok: #4ade80;
+    }
+  }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { font-family: system-ui, -apple-system, "Noto Sans KR", sans-serif; font-size: 16px; line-height: 1.55; padding: 16px; }
+  h1 { font-size: 22px; margin: 4px 0 6px; }
+  h2 { font-size: 18px; margin: 0 0 6px; }
+  p { margin: 6px 0; }
+  .lead { color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 14px 0; }
+  .card.warn { border-color: var(--warn); }
+  .flow { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
+  .step { display: flex; align-items: flex-start; gap: 10px; }
+  .arrow { color: var(--muted); padding-left: 22px; font-size: 18px; line-height: 1.2; }
+  .who { flex: 0 0 auto; min-width: 44px; text-align: center; font-size: 13px; font-weight: 700; color: #fff;
+         border-radius: 999px; padding: 2px 8px; margin-top: 2px; }
+  .who.user { background: var(--user); } .who.phone { background: var(--phone); } .who.app { background: var(--app); }
+  .note { color: var(--muted); font-size: 14px; }
+  .ok { color: var(--ok); font-weight: 700; } .bad { color: var(--warn); font-weight: 700; }
+  .screens { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .screen { border: 1px solid var(--line); border-radius: 10px; padding: 8px; font-size: 14px; background: var(--bg); }
+  .screen b { display: block; font-size: 12px; color: var(--muted); font-weight: 600; }
+  .tag { font-weight: 700; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border-top: 1px solid var(--line); padding: 6px 4px; text-align: left; vertical-align: top; }
+</style>
+</head>
+<body>
+<h1>5G 자동 제어 도움말</h1>
+<p class="lead">5G가 자꾸 붙었다 떨어지는 곳에서 폰을 잠깐 LTE로 쉬게 했다가, 다시 5G를 확인하는 앱이에요. 아래 그림마다 누가 무엇을 하는지 색으로 나눴어요.</p>
+<div class="legend">
+  <span class="who user">사용자</span> <span class="who phone">폰</span> <span class="who app">앱</span>
+</div>
+
+<div class="card">
+  <h2>1. 평소: 5G가 잘 될 때</h2>
+  <div class="flow">
+    <div class="step"><span class="who phone">폰</span><div>5G로 연결돼 있어요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>지켜보기만 하고 아무것도 바꾸지 않아요. 타일: <b>5G 관리 중</b></div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>2. 5G가 불안정한 곳(예: 지하철)</h2>
+  <div class="flow">
+    <div class="step"><span class="who user">사용자</span><div>화면을 켜고 폰을 쓰는 중이에요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who phone">폰</span><div>2분 안에 5G가 <b>3번</b> 끊겨요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>5G를 잠깐 막아 <b>LTE로 쉬게</b> 해요. 처음엔 5분.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>쉬는 시간이 끝나면 5G를 다시 허용하고 <b>다시 확인</b>해요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who phone">폰</span><div>폰을 60초 쓰는 동안 끊김이 2번 미만이면 <span class="ok">통과</span> → 5G 계속 사용.<br>2번 끊기면 <span class="bad">실패</span> → 앱이 더 길게 쉬게 해요(10분 → 20분 → 40분, 최대 60분).</div></div>
+  </div>
+  <div class="screens">
+    <div class="screen"><b>쉬는 동안 설정 화면</b>네트워크 모드는 <span class="tag">5G 우선 그대로</span></div>
+    <div class="screen"><b>쉬는 동안 상단바</b><span class="tag">LTE</span> 표시</div>
+  </div>
+  <p class="note">데이터가 아예 끊기거나, 5G가 붙었다가 금방 떨어지는 일이 잦을 때도 쉬어요. 다시 확인하는 5분 안에 폰을 60초 쓰지 않으면 판정 없이 지켜보기로 돌아가요.</p>
+  <p class="note">앱은 사용자가 고른 네트워크 모드를 절대 바꾸지 않아요. 쉬는 동안에만 5G를 잠깐 막아요. 10분 동안 끊김 없이 안정적이면 쉬는 시간은 다시 5분부터 시작해요. 폰을 너무 자주 바꾸지 않게 1시간에 4번, 2분 간격까지만 바꿔요.</p>
+</div>
+
+<div class="card">
+  <h2>3. 쉬는 중에 LTE 우선을 고르면</h2>
+  <div class="flow">
+    <div class="step"><span class="who user">사용자</span><div>설정 → 연결 → 모바일 네트워크 → 네트워크 모드에서 <b>LTE 우선</b>을 눌러요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>곧바로 물러나고 걸어 둔 5G 막음을 풀어요. 타일: <b>LTE 우선 · 대기</b></div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who phone">폰</span><div>사용자가 고른 대로 LTE로 동작해요.</div></div>
+  </div>
+  <p class="note">다시 5G 우선을 고르면 앱이 바로 지켜보기 시작해요. 사용자가 고른 모드가 언제나 먼저예요.</p>
+</div>
+
+<div class="card">
+  <h2>4. Wi-Fi에 붙었을 때</h2>
+  <div class="flow">
+    <div class="step"><span class="who phone">폰</span><div>Wi-Fi로 인터넷을 써요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>5G를 지켜보지 않아요. 쉬던 중이었다면 5G를 되돌려 폰 기본 동작으로 둬요. 타일: <b>Wi-Fi · 대기</b></div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>5. 통화 중일 때</h2>
+  <div class="flow">
+    <div class="step"><span class="who user">사용자</span><div>전화를 걸거나 받아요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>통화가 끊기지 않게 아무것도 바꾸지 않아요. 끝나고 30초까지 기다렸다가 필요한 일을 해요.</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>6. 화면이 꺼져 있을 때</h2>
+  <div class="flow">
+    <div class="step"><span class="who phone">폰</span><div>화면이 꺼진 동안에도 5G가 붙었다 떨어졌다 할 수 있어요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>이때 끊김은 셈에 넣지 않아요(폰을 쓰지 않으니 불편이 없어요). 쉬던 중이면 5G 다시 확인은 화면이 켜진 뒤에 해요.</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>7. 상단바 5G/LTE가 저절로 바뀔 때</h2>
+  <div class="flow">
+    <div class="step"><span class="who phone">폰</span><div>폰은 쓰지 않을 때도 근처에 5G가 있으면 <b>5G</b>로 보여요. 막 쓰기 시작해 5G가 아직 안 붙었으면 잠깐 <b>LTE</b>로 보여요(몇 초 지연 있음).</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>이건 앱이 한 일이 아니에요. 앱이 바꾼 것은 [활동 기록]에 <b>[앱이 바꿈]</b>으로만 남아요.</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>8. 폰을 껐다 켜거나 업데이트할 때</h2>
+  <div class="flow">
+    <div class="step"><span class="who phone">폰</span><div>꺼지기 직전 앱에 알려요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>쉬던 중이어도 5G 막음을 먼저 풀어요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who phone">폰</span><div>다시 켜지고 잠금을 풀면</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>PC 없이 스스로 다시 시작해요.</div></div>
+  </div>
+</div>
+
+<div class="card warn">
+  <h2>9. 조심할 경우(5G가 막힌 채 남을 수 있음)</h2>
+  <table>
+    <tr><th>이런 일이 생기면</th><th>이렇게 풀어요</th></tr>
+    <tr><td><span class="who user">사용자</span> 쉬는 중에 이 앱을 <b>강제 중지</b>했어요.</td><td>앱을 다시 열거나 타일을 누르면 <span class="who app">앱</span>이 곧바로 막음을 풀어요.</td></tr>
+    <tr><td><span class="who user">사용자</span> 쉬는 중에 이 앱을 <b>삭제</b>했어요.</td><td>같은 앱을 다시 설치해 열면 [지금] 칸에 "5G가 다른 쪽에 의해 막혀 있어요"가 보여요(앱을 지우면서 앱의 기록도 지워져 앱이 자기 막음인지 알 수 없어요). <span class="who user">사용자</span>가 <b>[남은 5G 막음 풀기]</b>를 누르면 풀려요.</td></tr>
+    <tr><td><span class="who phone">폰</span>이 쉬는 중에 <b>갑자기 꺼졌고</b>(배터리 방전 등), 다시 켤 때 <b>삼성 업데이트나 SIM 교체</b>가 겹쳤어요.</td><td>이 경우 앱의 5G/LTE 전환 권한이 풀려 스스로 못 풀어요. <b>처음 설정</b>을 다시 하면 풀려요(처음 설정은 곧 앱에 들어갈 기능이에요. 지금은 PC로 해요).</td></tr>
+  </table>
+  <p class="note">5G가 계속 안 돌아온다고 느껴지면: 앱을 열어 [지금] 칸을 보세요. 타일을 한 번 탭해 자동 제어를 끄면 앱이 자기가 건 막음을 풀고 폰 기본 동작으로 돌아가요. 다른 쪽이 건 막음은 앱이 스스로 풀지 않고, [남은 5G 막음 풀기] 버튼으로 사용자가 직접 풀 수 있어요.</p>
+</div>
+
+<div class="card">
+  <h2>10. 자가 점검</h2>
+  <div class="flow">
+    <div class="step"><span class="who user">사용자</span><div>[지금] 칸에서 <b>자가 점검 시작</b>을 눌러요.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who app">앱</span><div>권한과 고른 모드를 확인하고, 5G를 잠깐 막았다가(다시 읽어 확인) 되돌려요(다시 읽어 확인).</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><span class="who phone">폰</span><div>그동안 연결이 1~2초씩 두 번 끊길 수 있어요.</div></div>
+  </div>
+  <p class="note">통화 중이거나, 쉬는 중이거나, 방금 점검했으면(1분 간격) 점검하지 않아요. 점검 때 생긴 끊김은 쉬기 셈에 넣지 않아요.</p>
+</div>
+
+<div class="card">
+  <h2>앱 화면 보는 법</h2>
+  <table>
+    <tr><td><b>[지금]</b></td><td>지금 상태, 이유, 다음에 할 일, 오늘의 활동</td></tr>
+    <tr><td><b>[활동 기록]</b></td><td>최근 24시간. <span class="tag">[폰 상태]</span> 폰·기지국이 한 일 · <span class="tag">[앱 판단]</span> 앱이 내린 결론 · <span class="tag">[앱이 바꿈]</span> 앱이 실제로 5G/LTE를 바꾼 것</td></tr>
+    <tr><td><b>[상세]</b></td><td>문제가 생겼을 때 보는 자세한 값</td></tr>
+    <tr><td><b>[설정]</b></td><td>자동 제어 켜기·끄기, 타일 추가, 배터리 최적화 제외, 알림 설정</td></tr>
+  </table>
+  <p class="note">배터리를 얼마나 아꼈는지 같은 추정 숫자는 보여 주지 않아요. 앱이 확실히 본 것과 한 일만 보여 줘요.</p>
+</div>
+</body>
+</html>

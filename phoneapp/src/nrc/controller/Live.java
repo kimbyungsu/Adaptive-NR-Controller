@@ -22,6 +22,8 @@ final class Live {
     boolean dataIn = true;
     /** 모바일 데이터 연결이 이어져 있는지. */
     boolean dataConnected;
+    /** 통신사 칸에서 5G가 빠져 있는데 앱이 건 것이 아니다(다른 쪽, 또는 앱을 지웠다 다시 설치해 기록이 없어진 막음). */
+    boolean carrierExternal;
     int display;
     int drops;
     int nDrop;
