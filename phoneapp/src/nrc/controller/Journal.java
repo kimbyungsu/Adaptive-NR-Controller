@@ -19,9 +19,14 @@ final class Journal {
     private final File file;
 
     Journal(File dir) {
+        this(dir, "nrc.log");
+    }
+
+    /** 다른 이름의 기록(처음 설정은 logs/setup.log — 엔진 기록과 한 파일을 두 곳에서 쓰지 않게). */
+    Journal(File dir, String name) {
         File d = new File(dir, "logs");
         d.mkdirs();
-        this.file = new File(d, "nrc.log");
+        this.file = new File(d, name);
     }
 
     synchronized void write(String event, Object... kv) {

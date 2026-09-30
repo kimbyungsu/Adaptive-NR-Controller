@@ -4,6 +4,7 @@
   - 쉬기 = 통신사 칸(CARRIER)에서 NR만 뺌. 사용자 칸(USER)은 읽기만. 폰이 이 앱을 통신사가 인정한 앱으로 대해야 동작한다.
   - 타일 탭 = 자동 제어 켜기·끄기, 길게 누르면 상세 화면. 다른 앱 위 표시(오버레이)는 쓰지 않는다.
   - 알림 허락은 먼저 묻지 않는다. 사용자가 앱 알림을 꺼 두면 알림 창에 줄이 없다(안드로이드 13+).
+  - 처음 설정(PC 없이): 폰 자체 무선 디버깅에 이 폰 안에서(127.0.0.1) 연결해 인정 목록에 앱 줄을 덧붙인다. 인터넷 권한은 이 연결에만 쓴다.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="nrc.controller"
@@ -17,6 +18,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="5G 자동 제어"
@@ -33,8 +35,17 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".SetupActivity"
+            android:exported="false"
+            android:label="처음 설정"
+            android:resizeableActivity="true" />
         <service
             android:name=".ControllerService"
+            android:exported="false" />
+        <!-- 처음 설정 알림의 [코드 입력]: 이 앱이 만든 PendingIntent만 부른다 -->
+        <receiver
+            android:name=".SetupNotice"
             android:exported="false" />
         <service
             android:name=".NrTile"

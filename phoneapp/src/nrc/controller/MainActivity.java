@@ -64,6 +64,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
     private Button selfTestButton;
     private TextView selfTestOut;
     private Button liftButton;
+    private Button setupButton;
     private TextView liftOut;
     private SpannableStringBuilder selfTestText = new SpannableStringBuilder();
     private boolean selfTestRunning;
@@ -169,6 +170,8 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         nowNext = text("", 15);
         nowNext.setTypeface(Typeface.DEFAULT_BOLD);
         body.addView(nowNext);
+        setupButton = button("처음 설정하기(PC 없이)", v -> startActivity(new Intent(this, SetupActivity.class)));
+        body.addView(setupButton);
         liftButton = button("남은 5G 막음 풀기", v -> confirmLiftExternal());
         body.addView(liftButton);
         liftOut = text("", 14);
@@ -210,6 +213,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
             render();
         });
         body.addView(autoButton);
+        body.addView(button("처음 설정(PC 없이)", v -> startActivity(new Intent(this, SetupActivity.class))));
         body.addView(button("빠른 설정 패널에 '5G 자동' 타일 추가", v -> requestTile()));
         body.addView(button("배터리 최적화에서 빼기(오래 살아 있게)", v -> requestBatteryExemption()));
         body.addView(button("이 앱 알림 설정 열기", v -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
@@ -251,6 +255,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
                 && CarrierPlan.classify(r.read(Radio.CARRIER), own) == CarrierPlan.Carrier.EXTERNAL;
         NowText t = NowText.of(l, AppState.tile(this), SystemClock.elapsedRealtime(), leftover, external);
         liftButton.setVisibility(external ? View.VISIBLE : View.GONE);
+        setupButton.setVisibility(r != null && !r.privileged() ? View.VISIBLE : View.GONE);
         headline.setText(t.headline);
         StringBuilder sb = new StringBuilder();
         for (String s : t.lines) sb.append("· ").append(s).append('\n');
