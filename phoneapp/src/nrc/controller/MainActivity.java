@@ -221,7 +221,9 @@ public final class MainActivity extends Activity implements SharedPreferences.On
 
     private void renderNow() {
         Live l = ControllerService.live();
-        NowText t = NowText.of(l, AppState.tile(this), SystemClock.elapsedRealtime());
+        Radio r = Radio.open(this);
+        boolean leftover = r != null && Engine.ownMask(this, r.sub) >= 0; // 엔진이 없어도 남은 막음이 있을 수 있다
+        NowText t = NowText.of(l, AppState.tile(this), SystemClock.elapsedRealtime(), leftover);
         headline.setText(t.headline);
         StringBuilder sb = new StringBuilder();
         for (String s : t.lines) sb.append("· ").append(s).append('\n');

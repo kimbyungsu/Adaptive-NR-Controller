@@ -16,6 +16,12 @@ final class Live {
     boolean wifi;
     boolean screen;
     boolean nrActual;
+    /** 기지국 묶음 보고를 받았는지(안 받았으면 실제 연결 확인 전). */
+    boolean pccKnown;
+    /** 데이터 서비스에 등록돼 있는지(아니면 "서비스 없음"). */
+    boolean dataIn = true;
+    /** 모바일 데이터 연결이 이어져 있는지. */
+    boolean dataConnected;
     int display;
     int drops;
     int nDrop;

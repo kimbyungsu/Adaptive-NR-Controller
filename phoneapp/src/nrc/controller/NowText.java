@@ -48,20 +48,32 @@ final class NowText {
     /**
      * @param l    엔진의 지금 모습(엔진이 없으면 null)
      * @param tile 타일 글(엔진이 없을 때 머리글로 쓴다)
-     * @param now  부팅 후 경과(ms, Live와 같은 시계)
+     * @param now      부팅 후 경과(ms, Live와 같은 시계)
+     * @param leftover 이 SIM에 앱이 걸어 둔 5G 막음 기록이 남아 있는지(엔진이 없어도 해제를 기다리는 중일 수 있다)
      */
-    static NowText of(Live l, TileText tile, long now) {
+    static NowText of(Live l, TileText tile, long now, boolean leftover) {
         List<String> ls = new ArrayList<>();
         if (l == null) {
-            ls.add("판단 엔진이 돌고 있지 않아 앱은 망을 바꾸지 않습니다(삼성 설정대로 순정 동작).");
-            String next = "자동 제어 꺼짐".equals(tile.subtitle) ? "타일을 한 번 탭하면 자동 제어를 켭니다."
+            // 엔진이 없다고 곧 순정은 아니다(외부 검증 지적): 남은 막음·문제를 먼저 알린다
+            if (leftover) {
+                ls.add("앱이 걸어 둔 5G 막음이 아직 남아 있습니다. 통화 중이면 통화가 끝난 뒤, 아니면 30초마다 다시 풀기를 시도합니다.");
+            }
+            if (tile.look == TileText.Look.UNAVAILABLE) ls.add("문제: " + tile.subtitle + " — 지금은 앱이 망을 바꿀 수 없습니다.");
+            if (!leftover && tile.look != TileText.Look.UNAVAILABLE) {
+                ls.add("판단 엔진이 돌고 있지 않고 남은 막음도 없어 삼성 설정대로 순정 동작합니다.");
+            }
+            String next = leftover ? "막음이 풀리면 순정 동작으로 돌아갑니다."
+                    : "자동 제어 꺼짐".equals(tile.subtitle) ? "타일을 한 번 탭하면 자동 제어를 켭니다."
                     : TileText.STOPPED.equals(tile.subtitle) ? "타일을 탭하면 다시 시작합니다."
                     : TileText.STARTING.equals(tile.subtitle) ? "곧 시작합니다."
                     : "상세 칸에서 원인을 확인하세요.";
             return new NowText(tile.subtitle, ls, next);
         }
-        ls.add("실제 연결: " + (l.nrActual ? "5G(5G 칸 붙음)" : "LTE") + " · 상단바 표시: " + display(l.display));
-        ls.add("사용자 선택: " + (l.userNr ? "5G 우선" : "LTE 우선") + " · 인터넷: " + (l.wifi ? "Wi-Fi" : "모바일 데이터"));
+        // 확인되지 않은 것은 단정하지 않는다(외부 검증 지적): 서비스 없음·보고 전·연결 없음을 따로 보인다
+        String conn = !l.dataIn ? "서비스 없음" : !l.pccKnown ? "확인 전" : (l.nrActual ? "5G(5G 칸 붙음)" : "LTE(5G 칸 없음)");
+        String net = l.wifi ? "Wi-Fi" : (l.dataConnected ? "모바일 데이터" : "연결 안 됨·확인 중");
+        ls.add("실제 연결: " + conn + " · 상단바 표시: " + display(l.display));
+        ls.add("사용자 선택: " + (l.userNr ? "5G 우선" : "LTE 우선") + " · 인터넷: " + net);
         if (l.problem != null) ls.add("문제: " + l.problem);
         if (l.selfTesting) ls.add("자가 점검 중");
         String headline;

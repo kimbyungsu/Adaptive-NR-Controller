@@ -108,6 +108,7 @@ public final class PolicyTest {
 
     public static void main(String[] args) {
         threeActiveDropsThenProbePass();
+        countedTallyIncludesDecidingDrop();
         idleDropsDoNotCount();
         lteModeIsInactive();
         callClearsWindowAndGraceIgnored();
@@ -155,6 +156,21 @@ public final class PolicyTest {
     }
 
     // ---------------------------------------------------------------- Phase 1 시뮬레이션과 같은 상황
+
+    /** 관측 화면용 누적 계기판: 쉬기를 결정한 마지막 끊김도 센다(창은 비워져도). 안 센 끊김은 늘지 않는다(2026-09-30). */
+    static void countedTallyIncludesDecidingDrop() {
+        Object[] o = start();
+        Policy pol = (Policy) o[0];
+        drop(pol, 10);
+        drop(pol, 50);
+        check("둘째 끊김까지 계기판 2", pol.countedNr(), 2L);
+        drop(pol, 90);
+        check("셋째 끊김으로 쉬기", pol.state, Policy.State.COOLDOWN);
+        check("쉬기를 결정한 끊김도 계기판 3", pol.countedNr(), 3L);
+        check("판단 창은 비워짐", pol.dropsInWindow(90 * S), 0);
+        pol.nrOff(100 * S, 30 * S, 5 * S, true); // 데이터 안 쓰는 중(쉬는 중이기도 함)
+        check("안 센 끊김은 계기판 그대로", pol.countedNr(), 3L);
+    }
 
     static void threeActiveDropsThenProbePass() {
         Object[] o = start();

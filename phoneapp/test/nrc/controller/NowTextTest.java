@@ -11,29 +11,49 @@ public final class NowTextTest {
         long now = 1_000_000;
 
         // 엔진 없음: 타일 글이 머리글, 순정 동작 안내
-        NowText t = NowText.of(null, off, now);
+        NowText t = NowText.of(null, off, now, false);
         is(t.headline.equals("자동 제어 꺼짐") && t.next.contains("타일을 한 번 탭"), "엔진 없음 · 꺼짐");
+        is(has(t, "순정 동작"), "엔진 없음·남은 막음 없음 = 순정");
+        // 엔진이 없어도 남은 막음이 있으면 순정이라고 하지 않는다
+        t = NowText.of(null, off, now, true);
+        is(has(t, "5G 막음이 아직 남아") && !has(t, "순정 동작") && t.next.contains("막음이 풀리면"), "엔진 없음·남은 막음");
+        TileText lost = TileText.of(true, "5G 막힘 · 다시 설정 필요", TileText.MODE_NR, false, null, true, false);
+        t = NowText.of(null, lost, now, true);
+        is(has(t, "문제: 5G 막힘 · 다시 설정 필요") && !has(t, "순정 동작"), "권한 상실·남은 막음");
 
         // 감시 중: 판단 기준과 지금 센 끊김, 가장 오래된 끊김이 빠지는 시각
         Live l = base();
         l.state = "WATCH";
         l.drops = 1;
         l.oldestDrop = now - 30_000;
-        t = NowText.of(l, on, now);
+        t = NowText.of(l, on, now, false);
         is(t.headline.equals("5G 감시 중 · 지켜보는 중"), "감시 머리글 " + t.headline);
         is(has(t, "2분 안에 5G가 3번"), "판단 기준 문장");
         is(has(t, "지금: 1 / 3번(가장 오래된 끊김은 1:30 뒤 빠짐)"), "지금 센 끊김");
         is(has(t, "실제 연결: 5G(5G 칸 붙음) · 상단바 표시: 5G"), "실제 연결과 상단바 따로");
+        // 확인 안 된 연결은 단정하지 않는다
+        l.dataIn = false;
+        t = NowText.of(l, on, now, false);
+        is(has(t, "실제 연결: 서비스 없음"), "서비스 없음");
+        l.dataIn = true;
+        l.pccKnown = false;
+        t = NowText.of(l, on, now, false);
+        is(has(t, "실제 연결: 확인 전"), "보고 전");
+        l.pccKnown = true;
+        l.dataConnected = false;
+        t = NowText.of(l, on, now, false);
+        is(has(t, "인터넷: 연결 안 됨·확인 중"), "데이터 연결 없음");
+        l.dataConnected = true;
 
         // 판단 쉬는 중(화면 꺼짐)
         l.hold = "screen_off";
-        t = NowText.of(l, on, now);
+        t = NowText.of(l, on, now, false);
         is(has(t, "판단 쉬는 중: 화면이 꺼져 있음") && t.next.contains("끝나면 다시 셉니다"), "판단 쉼");
         l.hold = null;
 
         // Wi-Fi
         l.wifi = true;
-        t = NowText.of(l, on, now);
+        t = NowText.of(l, on, now, false);
         is(t.headline.equals("Wi-Fi · 대기"), "Wi-Fi");
         l.wifi = false;
 
@@ -43,14 +63,14 @@ public final class NowTextTest {
         l.coolUntil = now + 125_000;
         l.nrActual = false;
         l.display = 1;
-        t = NowText.of(l, on, now);
+        t = NowText.of(l, on, now, false);
         is(t.headline.equals("LTE로 쉬는 중"), "쉬기 머리글");
         is(has(t, "이유: 데이터를 쓰는 중 2분 안에 5G가 3번 이상 끊김"), "쉬기 이유");
         is(has(t, "남은 휴식: 2:05"), "남은 휴식");
-        is(has(t, "실제 연결: LTE · 상단바 표시: LTE+"), "쉬는 중 연결");
+        is(has(t, "실제 연결: LTE(5G 칸 없음) · 상단바 표시: LTE+"), "쉬는 중 연결");
         l.coolUntil = now - 1;
         l.hold = "screen_off";
-        t = NowText.of(l, on, now);
+        t = NowText.of(l, on, now, false);
         is(has(t, "휴식 끝") && has(t, "재시험은 이 조건이 끝난 뒤: 화면이 꺼져 있음"), "휴식 끝·보류");
         l.hold = null;
 
@@ -59,19 +79,19 @@ public final class NowTextTest {
         l.useMs = 37_000;
         l.probeDrops = 1;
         l.evalStart = now - 60_000;
-        t = NowText.of(l, on, now);
+        t = NowText.of(l, on, now, false);
         is(t.headline.equals("5G 재시험 중"), "재시험 머리글");
         is(has(t, "데이터 사용 확인: 37 / 60초"), "재시험 진행");
         is(has(t, "재시험 중 끊김: 1 / 2번(2번이면 다시 쉼)"), "재시험 끊김");
         is(has(t, "판정 마감까지: 4:00"), "판정 마감");
         l.evalStart = -1;
-        t = NowText.of(l, on, now);
+        t = NowText.of(l, on, now, false);
         is(has(t, "자리 잡는 중"), "정착 중");
 
         // LTE 우선
         l.state = "INACTIVE";
         l.userNr = false;
-        t = NowText.of(l, on, now);
+        t = NowText.of(l, on, now, false);
         is(t.headline.equals("LTE 우선 · 대기") && has(t, "사용자 선택: LTE 우선"), "LTE 우선");
 
         // 관찰만(SIM 2개)과 문제 표시
@@ -79,7 +99,7 @@ public final class NowTextTest {
         l.userNr = true;
         l.blocked = "dual_sim";
         l.problem = "통신사 칸 확인 필요";
-        t = NowText.of(l, on, now);
+        t = NowText.of(l, on, now, false);
         is(has(t, "이유: SIM이 2개(한 개일 때만 제어)") && has(t, "문제: 통신사 칸 확인 필요"), "관찰만·문제");
 
         is(NowText.display(3).equals("5G") && NowText.display(0).equals("LTE") && NowText.display(-1).equals("알 수 없음"), "표시 말");
@@ -100,6 +120,9 @@ public final class NowTextTest {
         l.nProbe = 2;
         l.evalStart = -1;
         l.stateSinceWall = 0;
+        l.pccKnown = true;
+        l.dataIn = true;
+        l.dataConnected = true;
         return l;
     }
 

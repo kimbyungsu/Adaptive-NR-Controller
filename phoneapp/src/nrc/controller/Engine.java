@@ -92,7 +92,8 @@ final class Engine implements Policy.Env, Watcher.Listener {
     private long oosAtT = -1;
     private boolean selfTesting;
     private long quietUntil = -1;
-    private long lastSelfTestAt = -1;
+    /** 마지막 자가 점검 시각(부팅 후 경과)을 담는 저장소 키. 엔진을 새로 만들어도 1분 간격이 유지된다(외부 검증 지적). */
+    static final String LAST_SELF_TEST = "lastSelfTest";
 
     Engine(Context ctx, Radio radio, Journal log, Timeline tl, ScheduledExecutorService worker, Host host) {
         this.radio = radio;
@@ -154,6 +155,9 @@ final class Engine implements Policy.Env, Watcher.Listener {
         long t = now();
         screenOn = screen;
         wifiNow = wifi;
+        rollSummary();
+        sum.closeRest(System.currentTimeMillis()); // 지난 실행이 쉬는 중에 죽었으면 여기서 닫는다(그 사이 시간도 들어갈 수 있음)
+        saveSummary();
         policy = new Policy(params, this);
         reconcile("start", false); // 지난 실행이 남긴 막음을 먼저 푼다(엔진은 아직 쉬는 중이 아니다)
         long u = radio.read(Radio.USER);
@@ -206,6 +210,9 @@ final class Engine implements Policy.Env, Watcher.Listener {
         if (stopped) return;
         stopped = true;
         selfTesting = false; // 멈추면 자가 점검도 끝낸다(남은 막음은 곧이은 정리가 푼다)
+        rollSummary();
+        sum.closeRest(System.currentTimeMillis()); // 상태 사건 없이 끝나도 쉰 시간을 닫는다(외부 검증 지적)
+        saveSummary();
         if (timer != null) timer.cancel(false);
         if (ticker != null) ticker.cancel(false);
         if (watcher != null) {
@@ -273,8 +280,11 @@ final class Engine implements Policy.Env, Watcher.Listener {
             after(t);
             return;
         }
+        long oosBefore = policy.countedOos();
         policy.oos(t, sinceDataMs, screenOn);
-        if (screenOn) tl.add(Timeline.Cat.OBS, "데이터 서비스 끊김");
+        if (screenOn) {
+            tl.add(Timeline.Cat.OBS, "데이터 서비스 끊김" + (policy.countedOos() > oosBefore ? "(판단에 셈)" : "(판단에 안 셈)"));
+        }
         after(t);
     }
 
@@ -296,10 +306,10 @@ final class Engine implements Policy.Env, Watcher.Listener {
             after(t);
             return;
         }
-        int before = policy.dropsInWindow(t);
-        int probeBefore = policy.probeDropCount();
+        long before = policy.countedNr();
+        boolean probing = policy.state == Policy.State.PROBE;
         policy.nrOff(t, sinceDataMs, dwellMs, screenOn);
-        boolean counted = policy.dropsInWindow(t) > before || policy.probeDropCount() > probeBefore;
+        boolean counted = policy.countedNr() > before;
         if (counted) {
             rollSummary();
             sum.onCountedDrop();
@@ -307,7 +317,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
         }
         if (screenOn) {
             String how = !active ? "데이터 안 쓰는 중 · 판단에 안 셈"
-                    : counted ? "데이터 쓰는 중 · 판단에 셈" + countText(t)
+                    : counted ? "데이터 쓰는 중 · 판단에 셈" + countText(t, probing)
                     : "데이터 쓰는 중 · 지금은 판단 쉼";
             tl.add(Timeline.Cat.OBS, "실제 연결 5G → LTE(" + how + ")");
         }
@@ -316,12 +326,15 @@ final class Engine implements Policy.Env, Watcher.Listener {
 
     @Override
     public void onNrOn(long t, long sinceDataMs) {
-        if (stopped || !screenOn) return;
-        tl.add(Timeline.Cat.OBS, "실제 연결 LTE → 5G(5G 칸 붙음)");
+        if (stopped) return;
+        if (screenOn) tl.add(Timeline.Cat.OBS, "실제 연결 LTE → 5G(5G 칸 붙음)");
+        publish(); // 화면의 "실제 연결"이 다음 사건까지 늦지 않게(외부 검증 보완)
     }
 
-    private String countText(long t) {
-        if (policy.state == Policy.State.PROBE) return " " + policy.probeDropCount() + "/" + params.nProbe + "(재시험)";
+    /** 센 끊김 뒤 표시. 쉬기로 넘어갔으면 판단 창이 비워지므로 "쉬기 결정"으로 적는다. */
+    private String countText(long t, boolean wasProbing) {
+        if (policy.state == Policy.State.COOLDOWN) return wasProbing ? " → 재시험 실패, 다시 쉬기" : " → 기준에 닿아 쉬기 결정";
+        if (wasProbing) return " " + policy.probeDropCount() + "/" + params.nProbe + "(재시험)";
         return " " + policy.dropsInWindow(t) + "/" + params.nDrop;
     }
 
@@ -630,7 +643,10 @@ final class Engine implements Policy.Env, Watcher.Listener {
         l.userNr = CarrierPlan.hasNr(userMask);
         l.wifi = wifiNow;
         l.screen = screenOn;
+        l.dataIn = dataIn;
+        l.dataConnected = dataConn == TelephonyManager.DATA_CONNECTED;
         if (watcher != null) {
+            l.pccKnown = watcher.pccKnown();
             l.nrActual = watcher.nrConnected();
             l.display = watcher.display();
             l.lteRsrp = watcher.lteRsrp();
@@ -827,6 +843,13 @@ final class Engine implements Policy.Env, Watcher.Listener {
         }
     }
 
+    /** 앱이 실제로 망을 바꾼 일을 오늘의 활동 "마지막 개입"에 남긴다. */
+    private void noteAction(String text) {
+        rollSummary();
+        sum.onAction(System.currentTimeMillis(), text);
+        saveSummary();
+    }
+
     private void rollSummary() {
         Calendar c = Calendar.getInstance();
         String day = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date(c.getTimeInMillis()));
@@ -868,7 +891,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
         s.line("통신사 칸: 5G 허용 상태", true);
         if (wifiNow) s.line("참고: Wi-Fi를 쓰는 중이라 실제 연결 변화는 안 보일 수 있음", true);
         selfTesting = true;
-        lastSelfTestAt = t;
+        store.edit().putLong(LAST_SELF_TEST, t).commit();
         rec("self_test", "step", "start", "carrier", cur);
         tl.add(Timeline.Cat.ACT, "자가 점검 시작(사용자가 누름)");
         boolean nrBefore = watcher != null && watcher.nrConnected();
@@ -888,10 +911,12 @@ final class Engine implements Policy.Env, Watcher.Listener {
         boolean ok = called && after >= 0 && !CarrierPlan.hasNr(after) && CarrierPlan.matchesOurs(after, target);
         rec("self_test", "step", "block", "ok", ok, "after", after);
         if (!ok) {
-            if (after >= 0 && !CarrierPlan.hasNr(after) && CarrierPlan.matchesOurs(after, target)) {
+            if (after < 0) {
+                // 읽지 못함: 막혔는지 모른다. 선기록(목표값)을 그대로 두어 되돌리기·종료·다음 시작이 풀 수 있게 한다(외부 검증 지적)
+            } else if (!CarrierPlan.hasNr(after) && CarrierPlan.matchesOurs(after, target)) {
                 setOwn(after);
             } else {
-                setOwn(-1); // 막히지 않았거나 남의 값: 우리 것으로 기억하지 않는다
+                setOwn(-1); // 막히지 않았거나(5G 그대로) 남의 값: 우리 것으로 기억하지 않는다
             }
             s.line("5G 막기 실패(통신사 칸 값 " + after + ")", false);
             restoreSelfTest(s, false);
@@ -900,14 +925,17 @@ final class Engine implements Policy.Env, Watcher.Listener {
         setOwn(after);
         s.line("5G 막기: 통신사 칸에서 5G가 빠진 것을 다시 읽어 확인", true);
         tl.add(Timeline.Cat.ACT, "자가 점검: 5G 잠깐 막음");
+        noteAction("자가 점검: 5G 잠깐 막음");
         watchSelfTest(s, nrBefore, now() + SELF_TEST_WATCH_MS, now());
     }
 
     private String selfTestBlocker(long t) {
         if (stopped || policy == null) return "자동 제어가 꺼져 있어 점검할 수 없음";
         if (selfTesting) return "이미 점검 중";
-        if (lastSelfTestAt >= 0 && t - lastSelfTestAt < SELF_TEST_GAP_MS) {
-            return "방금 점검했음(" + Words.mmss(SELF_TEST_GAP_MS - (t - lastSelfTestAt)) + " 뒤 다시)";
+        long last = store.getLong(LAST_SELF_TEST, -1);
+        if (last > t) last = -1; // 재부팅 뒤(부팅 후 경과가 다시 0부터)
+        if (last >= 0 && t - last < SELF_TEST_GAP_MS) {
+            return "방금 점검했음(" + Words.mmss(SELF_TEST_GAP_MS - (t - last)) + " 뒤 다시)";
         }
         if (!radio.privileged()) return "통신사가 인정한 앱이 아님(처음 설정 필요)";
         if (!CarrierPlan.hasNr(userMask)) return "LTE 우선이라 점검할 5G가 없음(5G 우선에서 해 주세요)";
@@ -948,19 +976,24 @@ final class Engine implements Policy.Env, Watcher.Listener {
     }
 
     private void restoreSelfTest(TestSink s, boolean passSoFar) {
-        String g = radio.callGuard();
-        if (g != null) {
-            finishSelfTest(s, false, "통화가 시작돼 5G 되돌리기를 통화 뒤로 미룸(끝나면 자동으로 되돌림)");
-            return;
-        }
         long own = own();
         long cur = radio.read(Radio.CARRIER);
         CarrierPlan.Carrier k = CarrierPlan.classify(cur, own);
         boolean ok;
+        if (k == CarrierPlan.Carrier.UNKNOWN) {
+            // 읽지 못함은 "남이 바꿈"이 아니다: 기록을 두고 미룬다(읽히면 정리가 되돌린다, 외부 검증 지적)
+            finishSelfTest(s, false, "통신사 칸을 읽지 못해 되돌리기를 미룸(다시 읽히면 자동으로 되돌림)");
+            return;
+        }
         if (k == CarrierPlan.Carrier.OPEN) {
             setOwn(-1);
             ok = true;
         } else if (k == CarrierPlan.Carrier.OURS) {
+            String g = radio.callGuard(); // 쓰기 바로 앞에서 통화를 다시 본다(외부 검증 지적: 읽는 사이 시작된 통화)
+            if (g != null) {
+                finishSelfTest(s, false, "통화가 시작돼 5G 되돌리기를 통화 뒤로 미룸(끝나면 자동으로 되돌림)");
+                return;
+            }
             boolean called = radio.writeCarrier(CarrierPlan.target(cur, true));
             long after = radio.read(Radio.CARRIER);
             ok = called && CarrierPlan.hasNr(after);
@@ -974,6 +1007,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
         }
         s.line("5G 되돌리기: 통신사 칸에 5G가 다시 들어간 것을 확인, 막음 기록 지움", ok);
         tl.add(Timeline.Cat.ACT, ok ? "자가 점검: 5G 되돌림" : "자가 점검: 5G 되돌리기 실패");
+        if (ok) noteAction("자가 점검: 5G 되돌림");
         finishSelfTest(s, passSoFar && ok, null);
     }
 

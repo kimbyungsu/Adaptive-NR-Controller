@@ -294,10 +294,12 @@ final class Policy {
             if (state == State.PROBE) {
                 if (evalOpen(t) && pendingCause == null) {
                     probeOos++;
+                    countedOos++;
                     trySwitchLte(t, "probe_oos", 1);
                 }
             } else {
                 oos.addLast(t);
+                countedOos++;
                 lastBad = t;
                 to(t, State.WATCH, "oos");
                 String c = cause(t);
@@ -329,10 +331,12 @@ final class Policy {
             if (state == State.PROBE) {
                 if (evalOpen(t) && pendingCause == null) {
                     probeDrops++;
+                    countedNr++;
                     if (probeDrops >= p.nProbe) trySwitchLte(t, "probe_drops", 1);
                 }
             } else {
                 drops.addLast(new long[]{t, dwellMs});
+                countedNr++;
                 lastBad = t;
                 to(t, State.WATCH, "active_drop");
                 String c = cause(t);
@@ -434,6 +438,21 @@ final class Policy {
     }
 
     // ================================================================ 관측 화면용 읽기(판단에 영향 없음, 2026-09-30)
+
+    /**
+     * 판단에 센 사건의 누적 수(계기판, 판단에는 쓰지 않는다). 쉬기를 결정하면 판단 창을 비우므로 창 크기 변화로는
+     * "이 사건을 셌는지" 알 수 없다(외부 검증 지적) → 셀 때마다 늘어나는 이 값으로 가린다.
+     */
+    private long countedNr;
+    private long countedOos;
+
+    long countedNr() {
+        return countedNr;
+    }
+
+    long countedOos() {
+        return countedOos;
+    }
 
     Params params() {
         return p;

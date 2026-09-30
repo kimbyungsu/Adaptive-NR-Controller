@@ -63,7 +63,10 @@ final class Timeline {
         q.addLast(e);
         while (q.size() > CAP) q.pollFirst();
         try {
-            if (file.length() > MAX_FILE) rewrite();
+            if (file.length() > MAX_FILE) {
+                rewrite(); // 새 사건까지 담아 다시 쓰므로 따로 덧붙이지 않는다(외부 검증 지적: 두 줄로 저장됐다)
+                return;
+            }
             try (PrintWriter w = new PrintWriter(new FileWriter(file, true))) {
                 w.println(e.wall + "\t" + e.cat.name() + "\t" + e.text);
             }

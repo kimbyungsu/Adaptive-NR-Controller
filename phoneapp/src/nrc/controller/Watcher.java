@@ -223,6 +223,11 @@ final class Watcher extends TelephonyCallback implements
         return nrConnected;
     }
 
+    /** 기지국 묶음 보고를 한 번이라도 받았는지(안 받았으면 실제 연결은 "확인 전"). */
+    boolean pccKnown() {
+        return pccLogged;
+    }
+
     /** 상단바 표시 종류(TelephonyDisplayInfo override: 0 없음·1 LTE+·3 5G 등, 모름 -1). */
     int display() {
         return display;

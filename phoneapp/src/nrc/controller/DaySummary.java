@@ -49,6 +49,16 @@ final class DaySummary {
         if ("probe_undecided".equals(why)) undecided++;
     }
 
+    /**
+     * 판단 규칙이 상태를 바꾸지 않고 끝났을 때(자동 제어 끄기·폰 꺼짐·앱 종료) 쉬기 구간을 닫는다.
+     * 외부 검증 지적: 쉬는 중에 끄면 COOLDOWN을 나가는 상태 사건이 없어 쉰 시간이 계속 늘었다.
+     */
+    void closeRest(long wall) {
+        if (restSinceWall < 0) return;
+        restMs += Math.max(0, wall - restSinceWall);
+        restSinceWall = -1;
+    }
+
     void onCountedDrop() {
         countedDrops++;
     }

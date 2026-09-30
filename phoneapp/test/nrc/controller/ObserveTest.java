@@ -50,6 +50,14 @@ public final class ObserveTest {
         is(d.restMsNow(1_130_000) == 30_000, "자정부터 잰다 got " + d.restMsNow(1_130_000));
         d.roll("2026-10-01", 9);
         is(d.restMsNow(1_130_000) == 30_000, "같은 날 다시 불러도 그대로");
+        // 상태 변화 없이 끝남(자동 제어 끄기 등): 쉬기 구간을 닫고 더 늘지 않는다
+        DaySummary c = new DaySummary();
+        c.roll("2026-09-30", 0);
+        c.onState(10_000, "WATCH", "COOLDOWN", "drops");
+        c.closeRest(40_000);
+        is(!c.resting() && c.restMsNow(100_000) == 30_000, "끄면 쉬기 닫힘 got " + c.restMsNow(100_000));
+        c.closeRest(90_000);
+        is(c.restMsNow(100_000) == 30_000, "두 번 닫아도 그대로");
         // 저장·읽기
         d.onAction(1_100_500, "5G 막음 | LTE로 쉬기");
         DaySummary e = DaySummary.load(d.save());
