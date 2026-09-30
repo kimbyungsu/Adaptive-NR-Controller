@@ -65,6 +65,11 @@ final class AdbKey {
         return n;
     }
 
+    /** 이 폴더에 열쇠가 있는지(없으면 페어링한 적이 없다). */
+    static boolean exists(File dir) {
+        return new File(dir, "adbkey.pk8").isFile() && new File(dir, "adbkey.crt").isFile();
+    }
+
     static AdbKey create() throws Exception {
         KeyPairGenerator g = KeyPairGenerator.getInstance("RSA");
         g.initialize(new java.security.spec.RSAKeyGenParameterSpec(2048, BigInteger.valueOf(65537)));

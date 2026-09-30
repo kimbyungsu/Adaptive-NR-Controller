@@ -96,8 +96,11 @@ public final class SetupNotice extends BroadcastReceiver {
 
             @Override
             public void finished(boolean ok) {
-                if (ok) {
+                String w = Setup.warning();
+                if (ok && w == null) {
                     showText(c, "끝났어요 ✓ 이 알림을 눌러 앱에서 마무리해 주세요(배터리 최적화 제외). 설정이 끝났으니 앱 알림은 다시 꺼도 돼요.");
+                } else if (ok) {
+                    showText(c, "권한 설정은 끝났어요 ✓ 다만 " + w + " (이 알림을 누르면 앱이 열려요)");
                 } else {
                     showInput(c, "안 됐어요 ✗ " + lastLine() + " — 코드 창을 다시 띄우고 [코드 입력]으로 다시 해 주세요.");
                 }

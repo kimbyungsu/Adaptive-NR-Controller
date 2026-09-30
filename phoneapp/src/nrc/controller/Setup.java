@@ -40,6 +40,10 @@ final class Setup {
     private static final List<String[]> history = new ArrayList<>();
     private static volatile boolean running;
     private static volatile Boolean lastResult;
+    /** 설정 결과와 별개로 남은 경고(무선 디버깅이 켜진 채 등). 없으면 null. */
+    private static volatile String warning;
+    /** 이번 실행에서 무선 디버깅에 붙어 봤는지(경고를 낼지 정할 때). */
+    private static volatile boolean touchedAdb;
 
     static void addListener(Listener l) {
         listeners.add(l);
@@ -63,6 +67,11 @@ final class Setup {
         return lastResult;
     }
 
+    /** 마지막 실행 뒤 남은 경고(없으면 null). 성공 알림이 이 경고를 덮지 않게 따로 둔다(외부 검증 지적). */
+    static String warning() {
+        return warning;
+    }
+
     /**
      * 설정을 시작한다. pairPort·connectPort가 0 이하면 스스로 찾는다. 이미 도는 중이면 false.
      * code는 숫자 6자리만 받는다(다른 글자는 버린다).
@@ -83,6 +92,8 @@ final class Setup {
         if (running) return false;
         running = true;
         lastResult = null;
+        warning = null;
+        touchedAdb = false;
         history.clear();
         Context c = ctx.getApplicationContext();
         String digits = code == null ? "" : code.replaceAll("[^0-9]", "");
@@ -95,8 +106,13 @@ final class Setup {
                 emit("오류로 멈췄어요: " + t.getClass().getSimpleName(), false);
                 j.write("setup_error", "msg", String.valueOf(t));
             } finally {
-                if (!ok && Boolean.TRUE.equals(adbWifiOn(c))) {
-                    emit("무선 디버깅은 켜진 채예요 — 다시 하지 않을 거면 개발자 옵션에서 꺼 주세요", false);
+                Boolean on = adbWifiOn(c);
+                if (Boolean.TRUE.equals(on)) {
+                    warning = ok ? "무선 디버깅이 아직 켜져 있어요 — 처음 설정 화면의 [무선 디버깅 끄기]를 누르거나 개발자 옵션에서 꺼 주세요"
+                            : "무선 디버깅이 켜진 채예요 — 다시 하지 않을 거면 개발자 옵션에서 꺼 주세요";
+                    emit(warning, false);
+                } else if (on == null && touchedAdb) {
+                    warning = "무선 디버깅이 꺼졌는지 앱이 확인하지 못했어요 — 개발자 옵션에서 확인해 주세요";
                 }
                 lastResult = ok;
                 running = false;
@@ -127,7 +143,11 @@ final class Setup {
         }
         j.write("setup_start", "sub", r.sub, "priv", r.privileged(), "probe", probe);
         if (r.privileged() && !probe) {
-            emit("이미 5G/LTE 전환 권한이 있어요 — 할 일이 없어요", true);
+            emit("이미 5G/LTE 전환 권한이 있어요 — 목록은 건드리지 않아요", true);
+            // 지난 설정에서 무선 디버깅 끄기가 안 됐으면 여기서 다시 끈다(코드 없이, 페어링된 열쇠로)
+            if (Boolean.TRUE.equals(adbWifiOn(c)) && AdbKey.exists(keyDir(c))) {
+                turnOffAdbWifi(c, j, AdbKey.loadOrCreate(keyDir(c)), connectPort);
+            }
             return true;
         }
         if (code.length() != 6) {
@@ -145,10 +165,12 @@ final class Setup {
         // 3. 페어링
         int pp = pairPort > 0 ? pairPort : find(c, AdbFind.PAIRING, 10_000);
         if (pp <= 0) {
-            emit("페어링 코드 창을 찾지 못했어요 — 무선 디버깅 화면에서 '페어링 코드로 기기 페어링'을 눌러 코드 창을 띄운 채로 해 주세요", false);
+            emit("페어링 코드 창을 찾지 못했어요 — 무선 디버깅 화면에서 '페어링 코드로 기기 페어링'을 눌러 코드 창을 띄운 채로 해 주세요"
+                    + "(그래도 안 되면 코드 창의 'IP 주소 및 포트'에서 콜론 뒤 숫자를 '코드 창 포트' 칸에 적어요)", false);
             return false;
         }
         emit("앱: 코드 창을 찾았어요(포트 " + pp + ")", true);
+        touchedAdb = true;
         try {
             AdbPair.pair(key, host, pp, code);
         } catch (AdbPair.Failure f) {
@@ -162,7 +184,8 @@ final class Setup {
         // 4. 목록에 덧붙이기
         int cp = connectPort > 0 ? connectPort : find(c, AdbFind.CONNECT, 10_000);
         if (cp <= 0) {
-            emit("무선 디버깅 접속 포트를 찾지 못했어요 — 무선 디버깅 화면의 'IP 주소 및 포트'에서 콜론 뒤 숫자를 적어 다시 해 주세요", false);
+            emit("무선 디버깅 접속 포트를 찾지 못했어요 — 무선 디버깅 화면(코드 창 말고 바탕 화면)의 'IP 주소 및 포트'에서 콜론 뒤 숫자를 "
+                    + "'접속 포트' 칸에 적어 다시 해 주세요", false);
             return false;
         }
         String entry = entry(c);
@@ -192,6 +215,9 @@ final class Setup {
             ControllerService.timeline(c).add(Timeline.Cat.ACT, "처음 설정: 폰이 인정하는 목록에 이 앱 줄을 덧붙임(무선 디버깅)");
         } else if ("already".equals(result)) {
             emit("앱 줄은 이미 목록에 있어요", true);
+        } else if ("fail not_ready".equals(result)) {
+            emit("폰이 통신사 설정을 아직 다 읽지 않아서 목록을 건드리지 않았어요 — 잠시 뒤 다시 해 주세요", false);
+            return false;
         } else {
             emit("목록에 덧붙이지 못했어요(" + (result == null ? "응답 없음" : result) + ")", false);
             return false;
@@ -213,19 +239,31 @@ final class Setup {
             emit("목록에는 들어갔지만 권한이 아직 보이지 않아요 — 잠시 뒤 앱을 다시 열어 확인해 주세요", false);
         }
 
-        // 6. 무선 디버깅 끄기(이 명령으로 연결이 끊기므로 결과는 설정값으로 확인)
-        try {
-            AdbExec.run(key, host, cp, "settings put global adb_wifi_enabled 0");
-        } catch (AdbExec.Failure ignored) {
-            // 끄는 순간 연결이 끊겨 응답이 없을 수 있다
-        }
-        Thread.sleep(500);
-        Boolean wifiAdb = adbWifiOn(c);
-        j.write("setup_adb_wifi_off", "stillOn", wifiAdb);
-        if (Boolean.FALSE.equals(wifiAdb)) emit("앱: 무선 디버깅을 껐어요", true);
-        else if (wifiAdb == null) emit("무선 디버깅을 끄라고 보냈어요(꺼졌는지 앱이 읽을 수는 없어요 — 개발자 옵션에서 확인해 주세요)", true);
-        else emit("무선 디버깅이 아직 켜져 있어요 — 개발자 옵션에서 직접 꺼 주세요", false);
+        // 6. 무선 디버깅 끄기(권한 등록과 따로 확인해 경고로 남긴다)
+        turnOffAdbWifi(c, j, key, cp);
         return probe || priv;
+    }
+
+    /** 페어링된 열쇠로 무선 디버깅을 끈다. 이 명령으로 연결이 끊겨 응답이 없을 수 있어 결과는 설정값으로 확인한다. */
+    private static void turnOffAdbWifi(Context c, Journal j, AdbKey key, int cp) throws InterruptedException {
+        touchedAdb = true;
+        int port = cp > 0 ? cp : find(c, AdbFind.CONNECT, 10_000);
+        if (port > 0) {
+            try {
+                AdbExec.run(key, "127.0.0.1", port, "settings put global adb_wifi_enabled 0");
+            } catch (AdbExec.Failure ignored) {
+                // 끄는 순간 연결이 끊겨 응답이 없을 수 있다
+            }
+        }
+        Boolean on = adbWifiOn(c);
+        for (int i = 0; i < 6 && Boolean.TRUE.equals(on); i++) {
+            Thread.sleep(500);
+            on = adbWifiOn(c);
+        }
+        j.write("setup_adb_wifi_off", "port", port, "stillOn", on);
+        if (Boolean.FALSE.equals(on)) emit("앱: 무선 디버깅을 껐어요", true);
+        else if (on == null) emit("무선 디버깅을 끄라고 보냈어요(꺼졌는지 앱이 읽을 수는 없어요 — 개발자 옵션에서 확인해 주세요)", false);
+        else emit("무선 디버깅을 끄지 못했어요", false);
     }
 
     static File keyDir(Context c) {

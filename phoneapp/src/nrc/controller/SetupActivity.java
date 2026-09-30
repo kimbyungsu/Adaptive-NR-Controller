@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Typeface;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -31,6 +32,9 @@ public final class SetupActivity extends Activity implements Setup.Listener {
     private float d;
     private TextView status;
     private TextView progress;
+    private String noteText;
+    private Button offButton;
+    private EditText connectPortField;
     private EditText codeField;
     private EditText portField;
     private Button connectButton;
@@ -82,22 +86,35 @@ public final class SetupActivity extends Activity implements Setup.Listener {
         body.addView(text("방법 가 · 알림으로: 먼저 아래 버튼을 눌러 알림을 띄워 두고, 코드 창을 띄운 채 화면 위에서 알림창을 내려 "
                 + "이 앱 알림의 [코드 입력]에 6자리를 적어요.", 14));
         body.addView(button("코드 입력 알림 띄우기", v -> showNotice()));
+        body.addView(button("이 앱 알림 설정 열기", v -> open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()))));
         body.addView(text("방법 나 · 화면 나누기: 최근 앱 화면에서 이 앱 아이콘을 눌러 '분할 화면으로 열기'를 고른 뒤 설정 화면을 함께 띄우고, "
                 + "코드를 여기에 적어요.", 14));
         codeField = new EditText(this);
         codeField.setHint("6자리 코드");
         codeField.setInputType(InputType.TYPE_CLASS_NUMBER);
         body.addView(codeField);
+        body.addView(text("포트 칸은 앱이 스스로 못 찾았다고 할 때만 적어요.", 13));
         portField = new EditText(this);
-        portField.setHint("코드 창 포트(앱이 못 찾을 때만: 'IP 주소 및 포트'의 콜론 뒤 숫자)");
+        portField.setHint("코드 창 포트: 코드 창의 'IP 주소 및 포트'에서 콜론 뒤 숫자");
         portField.setInputType(InputType.TYPE_CLASS_NUMBER);
         body.addView(portField);
+        connectPortField = new EditText(this);
+        connectPortField.setHint("접속 포트: 무선 디버깅 바탕 화면의 'IP 주소 및 포트'에서 콜론 뒤 숫자");
+        connectPortField.setInputType(InputType.TYPE_CLASS_NUMBER);
+        body.addView(connectPortField);
         connectButton = button("연결", v -> startFromField());
         body.addView(connectButton);
 
         body.addView(section("진행"));
         progress = text("", 14);
         body.addView(progress);
+        offButton = button("무선 디버깅 끄기(앱이 끔)", v -> {
+            noteText = null;
+            Setup.start(this, "", -1, number(connectPortField));
+            render();
+        });
+        body.addView(offButton);
 
         doneBox = new LinearLayout(this);
         doneBox.setOrientation(LinearLayout.VERTICAL);
@@ -169,8 +186,12 @@ public final class SetupActivity extends Activity implements Setup.Listener {
         List<String[]> h = Setup.history();
         for (String[] l : h) p.append("1".equals(l[1]) ? "✓ " : "✗ ").append(l[0]).append('\n');
         if (Setup.running()) p.append("… 진행 중\n");
-        progress.setText(h.isEmpty() && !Setup.running() ? "아직 시작하지 않았어요" : p.toString().trim());
+        String w = Setup.running() ? null : Setup.warning();
+        if (w != null) p.append("⚠ ").append(w).append('\n');
+        String shown = h.isEmpty() && !Setup.running() ? "아직 시작하지 않았어요" : p.toString().trim();
+        progress.setText(noteText != null ? noteText + "\n\n" + shown : shown);
         connectButton.setEnabled(!Setup.running());
+        offButton.setVisibility(priv && Boolean.TRUE.equals(adbWifi) && !Setup.running() ? View.VISIBLE : View.GONE);
         doneBox.setVisibility(priv ? View.VISIBLE : View.GONE);
     }
 
@@ -184,33 +205,59 @@ public final class SetupActivity extends Activity implements Setup.Listener {
             port = -1;
         }
         if (port <= 0) port = pairFind.port();
-        if (!Setup.start(this, code, port, -1)) return;
+        noteText = null;
+        if (!Setup.start(this, code, port, number(connectPortField))) return;
         render();
     }
 
+    /** [코드 입력 알림 띄우기]: 알림 허락이 없으면(안드로이드 13+) 한 번 묻는다. 거절되면 다시 묻지 않고 다른 방법을 안내한다. */
     private void showNotice() {
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
             return;
         }
+        postNotice();
+    }
+
+    private void postNotice() {
         if (!SetupNotice.showInput(this, "설정 화면에 코드 창을 띄운 채 여기서 [코드 입력]을 눌러 6자리를 적어 주세요.")) {
-            progress.setText("앱 알림이 꺼져 있어요 — 여는 화면에서 이 앱 알림(또는 '처음 설정' 알림)을 켠 뒤 다시 눌러 주세요.");
-            open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
+            note("앱 알림이 꺼져 있어요 — 아래 [이 앱 알림 설정 열기]에서 켠 뒤 다시 누르거나, 방법 나(화면 나누기)로 해 주세요.");
         } else {
-            progress.setText("알림을 띄웠어요. 이제 무선 디버깅 화면에서 '페어링 코드로 기기 페어링'을 누르고, 알림창을 내려 코드를 적어 주세요.");
+            note("알림을 띄웠어요. 이제 무선 디버깅 화면에서 '페어링 코드로 기기 페어링'을 누르고, 알림창을 내려 코드를 적어 주세요.");
         }
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 1) showNotice();
+        if (requestCode != 1) return;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            postNotice();
+        } else {
+            note("알림을 허락하지 않았어요 — 방법 나(화면 나누기)로 하거나, [이 앱 알림 설정 열기]에서 켠 뒤 다시 눌러 주세요.");
+        }
+    }
+
+    /** 진행 칸 위의 한 줄 안내(설정 진행 줄과 따로). */
+    private void note(String s) {
+        noteText = s;
+        render();
+    }
+
+    private static int number(EditText f) {
+        try {
+            String s = f.getText().toString().trim();
+            return s.isEmpty() ? -1 : Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     private void requestBatteryExemption() {
         PowerManager pm = getSystemService(PowerManager.class);
         if (pm != null && pm.isIgnoringBatteryOptimizations(getPackageName())) {
-            progress.setText("이미 배터리 최적화에서 빠져 있어요 ✓");
+            note("이미 배터리 최적화에서 빠져 있어요 ✓");
             return;
         }
         try {
@@ -224,7 +271,7 @@ public final class SetupActivity extends Activity implements Setup.Listener {
         try {
             startActivity(i);
         } catch (RuntimeException e) {
-            progress.setText("그 화면을 열지 못했어요. 설정 앱에서 직접 찾아 주세요.");
+            note("그 화면을 열지 못했어요. 설정 앱에서 직접 찾아 주세요.");
         }
     }
 
