@@ -253,7 +253,7 @@ public final class ControllerService extends Service implements Engine.Host,
         }
         if (!radio.privileged()) {
             journal.write("engine_wait", "why", "no_privilege", "own", Engine.ownMask(this, radio.sub));
-            noteOnce("no_privilege", "통신사가 인정한 앱이 아니라 자동 제어를 시작하지 못함(처음 설정 필요)");
+            noteOnce("no_privilege", "5G/LTE 전환 권한이 없어 자동 제어를 시작하지 못함(처음 설정 필요)");
             publishIdle();
             return;
         }
@@ -319,7 +319,7 @@ public final class ControllerService extends Service implements Engine.Host,
         long after = r.read(Radio.CARRIER);
         boolean ok = called && CarrierPlan.hasNr(after);
         journal.write("lift", "why", why, "ok", ok, "before", c, "after", after);
-        timeline.add(Timeline.Cat.ACT, ok ? "남아 있던 5G 막음 해제(자동 제어 꺼진 뒤 정리)" : "5G 막음 해제 실패");
+        timeline.add(Timeline.Cat.ACT, ok ? "남아 있던 5G 막음을 풂(자동 제어 꺼진 뒤 정리)" : "5G 막음 풀기 실패");
         if (ok) Engine.setOwn(this, r.sub, -1);
     }
 

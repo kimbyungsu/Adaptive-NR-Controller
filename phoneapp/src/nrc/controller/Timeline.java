@@ -17,7 +17,7 @@ import java.util.List;
  */
 final class Timeline {
     enum Cat {
-        OBS("관찰"), JUDGE("판단"), ACT("조치");
+        OBS("폰 상태"), JUDGE("앱 판단"), ACT("앱이 바꿈");
 
         final String label;
 

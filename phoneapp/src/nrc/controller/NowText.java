@@ -54,85 +54,84 @@ final class NowText {
     static NowText of(Live l, TileText tile, long now, boolean leftover) {
         List<String> ls = new ArrayList<>();
         if (l == null) {
-            // 엔진이 없다고 곧 순정은 아니다(외부 검증 지적): 남은 막음·문제를 먼저 알린다
+            // 판단이 꺼져 있다고 곧 순정은 아니다(외부 검증 지적): 남은 막음·문제를 먼저 알린다
             if (leftover) {
-                ls.add("앱이 걸어 둔 5G 막음이 아직 남아 있습니다. 통화 중이면 통화가 끝난 뒤, 아니면 30초마다 다시 풀기를 시도합니다.");
+                ls.add("앱이 걸어 둔 5G 막음이 아직 남아 있어요. 통화 중이면 통화가 끝난 뒤, 아니면 30초마다 다시 풀어요.");
             }
-            if (tile.look == TileText.Look.UNAVAILABLE) ls.add("문제: " + tile.subtitle + " — 지금은 앱이 망을 바꿀 수 없습니다.");
+            if (tile.look == TileText.Look.UNAVAILABLE) ls.add("문제: " + tile.subtitle + " — 지금은 앱이 5G/LTE를 바꿀 수 없어요.");
             if (!leftover && tile.look != TileText.Look.UNAVAILABLE) {
-                ls.add("판단 엔진이 돌고 있지 않고 남은 막음도 없어 삼성 설정대로 순정 동작합니다.");
+                ls.add("판단이 꺼져 있고 남은 막음도 없어, 삼성 설정대로 순정(폰 기본 동작)이에요.");
             }
-            String next = leftover ? "막음이 풀리면 순정 동작으로 돌아갑니다."
-                    : "자동 제어 꺼짐".equals(tile.subtitle) ? "타일을 한 번 탭하면 자동 제어를 켭니다."
-                    : TileText.STOPPED.equals(tile.subtitle) ? "타일을 탭하면 다시 시작합니다."
-                    : TileText.STARTING.equals(tile.subtitle) ? "곧 시작합니다."
-                    : "상세 칸에서 원인을 확인하세요.";
+            String next = leftover ? "막음이 풀리면 순정으로 돌아가요."
+                    : "자동 제어 꺼짐".equals(tile.subtitle) ? "타일을 한 번 탭하면 자동 제어를 켜요."
+                    : TileText.STOPPED.equals(tile.subtitle) ? "타일을 탭하면 다시 시작해요."
+                    : TileText.STARTING.equals(tile.subtitle) ? "곧 시작해요."
+                    : "[상세] 칸에서 원인을 확인하세요.";
             return new NowText(tile.subtitle, ls, next);
         }
-        // 확인되지 않은 것은 단정하지 않는다(외부 검증 지적): 서비스 없음·보고 전·연결 없음을 따로 보인다
-        String conn = !l.dataIn ? "서비스 없음" : !l.pccKnown ? "확인 전" : (l.nrActual ? "5G(5G 칸 붙음)" : "LTE(5G 칸 없음)");
+        // 확인되지 않은 것은 단정하지 않는다(외부 검증 지적): 서비스 없음·확인 중·연결 없음을 따로 보인다
+        String conn = !l.dataIn ? "서비스 없음" : !l.pccKnown ? "확인 중" : (l.nrActual ? "5G 사용 중" : "LTE만 사용 중");
         String net = l.wifi ? "Wi-Fi" : (l.dataConnected ? "모바일 데이터" : "연결 안 됨·확인 중");
-        ls.add("실제 연결: " + conn + " · 상단바 표시: " + display(l.display));
-        ls.add("사용자 선택: " + (l.userNr ? "5G 우선" : "LTE 우선") + " · 인터넷: " + net);
+        ls.add("지금 연결: " + conn + " (상단바 표시: " + display(l.display) + ")");
+        ls.add("고른 모드: " + (l.userNr ? "5G 우선" : "LTE 우선") + " · 인터넷: " + net);
         if (l.problem != null) ls.add("문제: " + l.problem);
-        if (l.selfTesting) ls.add("자가 점검 중");
+        if (l.selfTesting) ls.add("자가 점검 중이에요");
         String headline;
         String next;
         switch (l.state == null ? "" : l.state) {
             case "INACTIVE":
                 headline = "LTE 우선 · 대기";
-                ls.add("사용자가 LTE 우선을 골라 앱은 아무것도 바꾸지 않습니다.");
-                next = "5G 우선을 고르면 곧바로 감시를 시작합니다.";
+                ls.add("사용자가 LTE 우선을 골라 앱은 아무것도 바꾸지 않아요.");
+                next = "5G 우선을 고르면 바로 지켜보기 시작해요.";
                 break;
             case "OBSERVE":
-                headline = "관찰만 (제어 불가)";
+                headline = "지켜보기만 (바꿀 수 없음)";
                 ls.add("이유: " + (l.blocked != null ? Words.blocked(l.blocked) : Words.why(l.stateWhy)));
-                next = "조건이 풀리면 자동으로 다시 제어합니다.";
+                next = "조건이 풀리면 자동으로 다시 시작해요.";
                 break;
             case "SAFE_STOP":
-                headline = "안전 정지";
+                headline = "안전하게 멈춤";
                 ls.add("이유: " + Words.why(l.stateWhy));
-                next = "타일을 껐다 켜면 다시 시작합니다.";
+                next = "타일을 껐다 켜면 다시 시작해요.";
                 break;
             case "COOLDOWN": {
-                headline = "LTE로 쉬는 중";
+                headline = "LTE로 잠깐 쉬는 중";
                 ls.add("이유: " + Words.why(l.restWhy));
                 ls.add("쉬기 시작: " + clock(l.stateSinceWall));
                 long left = l.coolUntil - now;
-                ls.add(left > 0 ? "남은 휴식: " + Words.mmss(left) : "휴식 끝 · 재시험할 수 있을 때를 기다리는 중");
-                if (l.hold != null) ls.add("재시험은 이 조건이 끝난 뒤: " + Words.hold(l.hold));
-                next = "휴식이 끝나면 5G를 다시 시험합니다.";
+                ls.add(left > 0 ? Words.minSec(left) + " 뒤 5G 다시 확인" : "쉬는 시간 끝 · 5G 다시 확인을 기다리는 중");
+                if (l.hold != null) ls.add(Words.holdSentence(l.hold) + " — 이 조건이 끝나면 5G를 다시 확인해요");
+                next = "쉬는 시간이 끝나면 5G를 다시 확인해요.";
                 break;
             }
             case "PROBE": {
-                headline = "5G 재시험 중";
-                ls.add("재시험 시작: " + clock(l.stateSinceWall));
-                ls.add("데이터 사용 확인: " + (l.useMs / 1000) + " / " + (l.pActive / 1000) + "초");
-                ls.add("재시험 중 끊김: " + l.probeDrops + " / " + l.nProbe + "번(" + l.nProbe + "번이면 다시 쉼)");
-                if (l.evalStart >= 0) ls.add("판정 마감까지: " + Words.mmss(l.evalStart + l.pMax - now));
-                else ls.add("전환 직후 망이 자리 잡는 중(끝나면 확인 시작)");
-                if (l.hold != null) ls.add("지금은 확인을 쉬는 중: " + Words.hold(l.hold));
-                next = "데이터를 " + (l.pActive / 1000) + "초 쓰는 동안 끊김이 " + l.nProbe + "번 미만이면 통과입니다.";
+                headline = "5G 다시 확인 중";
+                ls.add("다시 확인 시작: " + clock(l.stateSinceWall));
+                ls.add("폰을 쓴 시간 " + (l.useMs / 1000) + "/" + (l.pActive / 1000) + "초");
+                ls.add("끊김 " + l.probeDrops + "번 (" + l.nProbe + "번이면 다시 쉬기)");
+                if (l.evalStart >= 0) ls.add(Words.minSec(l.evalStart + l.pMax - now) + " 안에 판정");
+                else ls.add("바꾼 직후라 연결이 자리 잡는 중(끝나면 확인 시작)");
+                if (l.hold != null) ls.add(Words.holdSentence(l.hold));
+                next = "폰을 " + (l.pActive / 1000) + "초 쓰는 동안 끊김이 " + l.nProbe + "번 미만이면 통과예요.";
                 break;
             }
             default: {
                 if (l.wifi && l.userNr) {
-                    headline = "Wi-Fi · 대기";
-                    ls.add("Wi-Fi로 인터넷을 쓰는 동안은 5G를 판단하지 않습니다(순정).");
-                    next = "Wi-Fi가 끊기면 다시 감시합니다.";
+                    headline = "Wi-Fi 사용 중 · 대기";
+                    ls.add("Wi-Fi로 인터넷을 쓰는 동안은 5G를 지켜보지 않아요(폰 기본 동작).");
+                    next = "Wi-Fi가 끊기면 다시 지켜봐요.";
                     break;
                 }
-                headline = "5G 감시 중 · " + ("GOOD".equals(l.state) ? "안정" : "지켜보는 중");
-                ls.add("판단 기준: 화면이 켜져 있고 데이터를 쓰는 중에 " + (l.windowMs / 60_000) + "분 안에 5G가 "
-                        + l.nDrop + "번 끊기면 LTE로 쉽니다.");
-                String now1 = "지금: " + l.drops + " / " + l.nDrop + "번";
-                if (l.oldestDrop >= 0) now1 += "(가장 오래된 끊김은 " + Words.mmss(l.oldestDrop + l.windowMs - now) + " 뒤 빠짐)";
-                ls.add(now1);
+                headline = "5G 사용 중 · " + ("GOOD".equals(l.state) ? "안정적" : "끊김이 있어 지켜보는 중");
+                ls.add("폰을 쓰는 중 " + (l.windowMs / 60_000) + "분 안에 5G가 " + l.nDrop + "번 끊기면 LTE로 잠깐 쉬어요.");
+                String count = "최근 " + (l.windowMs / 60_000) + "분 동안 끊김 " + l.drops + "번 (" + l.nDrop + "번이면 쉬기)";
+                if (l.oldestDrop >= 0) count += " · 가장 오래된 끊김은 " + Words.minSec(l.oldestDrop + l.windowMs - now) + " 뒤 셈에서 빠져요";
+                ls.add(count);
                 if (l.hold != null) {
-                    ls.add("판단 쉬는 중: " + Words.hold(l.hold));
-                    next = "이 조건이 끝나면 다시 셉니다.";
+                    ls.add(Words.holdSentence(l.hold));
+                    next = "이 조건이 끝나면 다시 지켜봐요.";
                 } else {
-                    next = "계속 감시합니다.";
+                    next = "계속 지켜봐요.";
                 }
                 break;
             }

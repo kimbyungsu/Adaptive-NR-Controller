@@ -239,7 +239,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
     void onWifi(boolean on) {
         if (stopped) return;
         long t = now();
-        if (on != wifiNow) tl.add(Timeline.Cat.OBS, on ? "Wi-Fi에 연결됨" : "Wi-Fi 끊김 → 모바일 데이터");
+        if (on != wifiNow) tl.add(Timeline.Cat.OBS, on ? "Wi-Fi 연결" : "Wi-Fi 끊김 → 모바일 데이터로");
         wifiNow = on;
         policy.wifi(t, on);
         after(t);
@@ -276,14 +276,14 @@ final class Engine implements Policy.Env, Watcher.Listener {
         if (stopped) return;
         oosAtT = t;
         if (quiet(t)) {
-            if (screenOn) tl.add(Timeline.Cat.OBS, "데이터 서비스 끊김(자가 점검 중 · 판단에 안 셈)");
+            if (screenOn) tl.add(Timeline.Cat.OBS, "데이터 끊김(자가 점검 중 · 셈에 안 넣음)");
             after(t);
             return;
         }
         long oosBefore = policy.countedOos();
         policy.oos(t, sinceDataMs, screenOn);
         if (screenOn) {
-            tl.add(Timeline.Cat.OBS, "데이터 서비스 끊김" + (policy.countedOos() > oosBefore ? "(판단에 셈)" : "(판단에 안 셈)"));
+            tl.add(Timeline.Cat.OBS, "데이터 끊김" + (policy.countedOos() > oosBefore ? "(쉬기 기준에 넣음)" : "(셈에 안 넣음)"));
         }
         after(t);
     }
@@ -291,7 +291,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
     @Override
     public void onService(long t) {
         if (stopped) return;
-        if (screenOn && oosAtT >= 0) tl.add(Timeline.Cat.OBS, "데이터 서비스 복구(" + secs(t - oosAtT) + "초 끊김)");
+        if (screenOn && oosAtT >= 0) tl.add(Timeline.Cat.OBS, "데이터 다시 연결(" + secs(t - oosAtT) + "초 끊김)");
         oosAtT = -1;
         policy.service(t);
         after(t);
@@ -302,7 +302,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
         if (stopped) return;
         boolean active = sinceDataMs >= 0 && sinceDataMs <= params.tActive;
         if (quiet(t)) {
-            if (screenOn) tl.add(Timeline.Cat.OBS, "실제 연결 5G → LTE(자가 점검 중 · 판단에 안 셈)");
+            if (screenOn) tl.add(Timeline.Cat.OBS, "5G 끊김(자가 점검 중 · 셈에 안 넣음)");
             after(t);
             return;
         }
@@ -319,10 +319,10 @@ final class Engine implements Policy.Env, Watcher.Listener {
             saveSummary();
         }
         if (screenOn) {
-            String how = !active ? "데이터 안 쓰는 중 · 판단에 안 셈"
-                    : counted ? "데이터 쓰는 중 · 판단에 셈" + countText(t, byProbe)
-                    : "데이터 쓰는 중 · 지금은 판단 쉼";
-            tl.add(Timeline.Cat.OBS, "실제 연결 5G → LTE(" + how + ")");
+            String how = !active ? "폰 안 쓰는 중 · 셈에 안 넣음"
+                    : counted ? "폰 쓰는 중 · " + countText(t, byProbe)
+                    : "폰 쓰는 중 · 지금은 셈에 안 넣음";
+            tl.add(Timeline.Cat.OBS, "5G 끊김(" + how + ")");
         }
         after(t);
     }
@@ -330,15 +330,15 @@ final class Engine implements Policy.Env, Watcher.Listener {
     @Override
     public void onNrOn(long t, long sinceDataMs) {
         if (stopped) return;
-        if (screenOn) tl.add(Timeline.Cat.OBS, "실제 연결 LTE → 5G(5G 칸 붙음)");
+        if (screenOn) tl.add(Timeline.Cat.OBS, "5G 붙음");
         publish(); // 화면의 "실제 연결"이 다음 사건까지 늦지 않게(외부 검증 보완)
     }
 
     /** 센 끊김 뒤 표시. 쉬기로 넘어갔으면 판단 창이 비워지므로 "쉬기 결정"으로 적는다. */
     private String countText(long t, boolean probeCounted) {
-        if (policy.state == Policy.State.COOLDOWN) return probeCounted ? " → 재시험 실패, 다시 쉬기" : " → 기준에 닿아 쉬기 결정";
-        if (probeCounted) return " " + policy.probeDropCount() + "/" + params.nProbe + "(재시험)";
-        return " " + policy.dropsInWindow(t) + "/" + params.nDrop;
+        if (policy.state == Policy.State.COOLDOWN) return probeCounted ? "다시 확인 중 " + params.nProbe + "번째 끊김 → 다시 쉬기" : "쉬기 기준 " + params.nDrop + "번째 → LTE로 잠깐 쉬기로 함";
+        if (probeCounted) return "다시 확인 중 끊김 " + policy.probeDropCount() + "/" + params.nProbe + "번째";
+        return "쉬기 기준 " + policy.dropsInWindow(t) + "/" + params.nDrop + "번째";
     }
 
     private boolean quiet(long t) {
@@ -430,7 +430,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
             // 값을 고쳤다. 우리 것으로 기억하지 않는다(외부 검증 지적: 남의 값을 우리 것으로 적으면 나중에 남의 제한을 푼다).
             // 조용히 LTE에 묶이지 않게 문제로 알린다.
             setOwn(own);
-            problem = "통신사 칸 확인 필요";
+            problem = "5G 설정값 확인 필요";
             rec("w_carrier", "why", why, "allowNr", false, "result", "after_not_ours", "before", cur,
                     "target", target, "after", after);
             return Policy.Result.of(Policy.Kind.FAILED);
@@ -730,11 +730,11 @@ final class Engine implements Policy.Env, Watcher.Listener {
                 if ("COOLDOWN".equals(to)) restWhy = why;
                 String text;
                 if ("COOLDOWN".equals(to)) {
-                    text = ("manual_test".equals(why) ? "시험 명령" : "불안정 판정") + " → LTE로 쉬기: " + Words.why(why);
+                    text = ("manual_test".equals(why) ? "시험 명령으로 " : "") + "LTE로 잠깐 쉬기로 함: " + Words.why(why);
                 } else if ("PROBE".equals(to)) {
-                    text = "쉬는 시간 끝 → 5G 재시험 시작";
+                    text = "쉬는 시간 끝 → 5G 다시 확인 시작";
                 } else if ("PROBE".equals(from) && "WATCH".equals(to)) {
-                    text = "재시험 결과: " + Words.why(why);
+                    text = "5G 다시 확인 결과: " + Words.why(why);
                 } else {
                     text = Words.state(to) + ": " + Words.why(why);
                 }
@@ -743,16 +743,16 @@ final class Engine implements Policy.Env, Watcher.Listener {
             }
             case "hold": {
                 String why = str(kv, "why");
-                if (!"screen_off".equals(why)) tl.add(Timeline.Cat.JUDGE, "판단 쉼: " + Words.hold(why));
+                if (!"screen_off".equals(why)) tl.add(Timeline.Cat.JUDGE, "지금은 지켜보지 않음: " + Words.hold(why));
                 break;
             }
             case "hold_end": {
                 String was = str(kv, "was");
-                if (!"screen_off".equals(was)) tl.add(Timeline.Cat.JUDGE, "판단 다시 시작(" + Words.hold(was) + " 끝)");
+                if (!"screen_off".equals(was)) tl.add(Timeline.Cat.JUDGE, "다시 지켜봄(" + Words.hold(was) + " 끝남)");
                 break;
             }
             case "suppressed":
-                tl.add(Timeline.Cat.JUDGE, "LTE로 쉬려 했지만 미룸: " + Words.guard(str(kv, "why")));
+                tl.add(Timeline.Cat.JUDGE, "LTE로 쉬려다 미룸: " + Words.guard(str(kv, "why")));
                 break;
             case "user_mode":
                 if (kv(kv, "from") != null) {
@@ -764,7 +764,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
                 boolean allow = Boolean.TRUE.equals(kv(kv, "allowNr"));
                 String why = str(kv, "why");
                 if ("ok".equals(result)) {
-                    String text = allow ? "5G 다시 허용(" + actionWhy(why) + ")" : "5G 막음 → LTE로 쉬기(통신사 칸)";
+                    String text = allow ? "5G 다시 허용(" + actionWhy(why) + ")" : "5G 잠깐 막음 → LTE로 쉬기";
                     tl.add(Timeline.Cat.ACT, text);
                     rollSummary();
                     sum.onAction(System.currentTimeMillis(), text);
@@ -773,18 +773,18 @@ final class Engine implements Policy.Env, Watcher.Listener {
                     String g = str(kv, "guard");
                     String c = str(kv, "cond");
                     if (!"self_test".equals(g)) {
-                        tl.add(Timeline.Cat.JUDGE, "통신사 칸 쓰기 미룸: " + (c != null ? Words.blocked(c) : Words.guard(g)));
+                        tl.add(Timeline.Cat.JUDGE, "5G/LTE 바꾸기를 미룸: " + (c != null ? Words.blocked(c) : Words.guard(g)));
                     }
                 } else if ("external_left".equals(result)) {
                     tl.add(Timeline.Cat.JUDGE, "다른 쪽이 건 5G 막음은 건드리지 않음");
                 } else if (!"already".equals(result) && !"stopped".equals(result)) {
-                    tl.add(Timeline.Cat.ACT, "통신사 칸 쓰기 실패(" + result + ")");
+                    tl.add(Timeline.Cat.ACT, "5G/LTE 바꾸기 실패(" + result + ")");
                 }
                 break;
             }
             case "lift": {
                 boolean ok = Boolean.TRUE.equals(kv(kv, "ok"));
-                String text = ok ? "남아 있던 5G 막음 해제(" + actionWhy(str(kv, "why")) + ")" : "5G 막음 해제 실패";
+                String text = ok ? "남아 있던 5G 막음을 풂(" + actionWhy(str(kv, "why")) + ")" : "5G 막음 풀기 실패";
                 tl.add(Timeline.Cat.ACT, text);
                 if (ok) {
                     rollSummary();
@@ -794,10 +794,10 @@ final class Engine implements Policy.Env, Watcher.Listener {
                 break;
             }
             case "own_cleared":
-                if ("EXTERNAL".equals(str(kv, "as"))) tl.add(Timeline.Cat.JUDGE, "다른 쪽이 통신사 칸을 바꿔 우리 막음 기록을 지움");
+                if ("EXTERNAL".equals(str(kv, "as"))) tl.add(Timeline.Cat.JUDGE, "다른 쪽이 값을 바꿔 앱의 막음 기록을 지움");
                 break;
             case "lift_deferred":
-                tl.add(Timeline.Cat.JUDGE, "5G 막음 해제를 통화 뒤로 미룸");
+                tl.add(Timeline.Cat.JUDGE, "5G 막음 풀기를 통화 뒤로 미룸");
                 break;
             case "engine_start":
                 tl.add(Timeline.Cat.JUDGE, "자동 제어 시작");
@@ -809,11 +809,11 @@ final class Engine implements Policy.Env, Watcher.Listener {
             }
             case "sim_block": {
                 String to = str(kv, "to");
-                tl.add(Timeline.Cat.JUDGE, "none".equals(to) ? "SIM 조건 풀림" : "SIM 조건: " + Words.blocked(to));
+                tl.add(Timeline.Cat.JUDGE, "none".equals(to) ? "SIM 조건이 풀려 다시 바꿀 수 있음" : "바꿀 수 없음: " + Words.blocked(to));
                 break;
             }
             case "write_failed_hold":
-                tl.add(Timeline.Cat.JUDGE, "쓰기 실패로 자동 판단 멈춤(타일을 껐다 켜면 다시 시작)");
+                tl.add(Timeline.Cat.JUDGE, "바꾸기가 실패해 자동 제어를 멈춤(타일을 껐다 켜면 다시 시작)");
                 break;
             case "stop_deferred":
                 tl.add(Timeline.Cat.JUDGE, "자동 제어 끄기를 미룸: " + Words.guard(str(kv, "why")));
@@ -827,14 +827,14 @@ final class Engine implements Policy.Env, Watcher.Listener {
         if (why == null) return "";
         switch (why) {
             case "probe":
-                return "재시험";
+                return "다시 확인";
             case "stop":
             case "stopped":
                 return "자동 제어 끔";
             case "wifi_restore":
                 return "Wi-Fi 연결";
             case "restore":
-                return "제어 불가로 되돌림";
+                return "바꿀 수 없게 되어 되돌림";
             case "shutdown":
                 return "폰 꺼짐·앱 종료";
             case "start":
@@ -883,15 +883,15 @@ final class Engine implements Policy.Env, Watcher.Listener {
             s.done(false);
             return;
         }
-        s.line("통신사가 인정한 앱(5G/LTE를 바꿀 자격): 있음", true);
-        s.line("사용자 선택: 5G 우선", true);
+        s.line("5G/LTE 전환 권한: 있음", true);
+        s.line("고른 모드: 5G 우선", true);
         long cur = radio.read(Radio.CARRIER);
         if (CarrierPlan.classify(cur, own()) != CarrierPlan.Carrier.OPEN) {
-            s.line("통신사 칸이 5G 허용 상태가 아님(다른 쪽이 막고 있을 수 있음)", false);
+            s.line("지금 5G가 허용된 상태가 아님(다른 쪽이 막고 있을 수 있음)", false);
             s.done(false);
             return;
         }
-        s.line("통신사 칸: 5G 허용 상태", true);
+        s.line("지금 5G 허용 상태", true);
         if (wifiNow) s.line("참고: Wi-Fi를 쓰는 중이라 실제 연결 변화는 안 보일 수 있음", true);
         selfTesting = true;
         store.edit().putLong(LAST_SELF_TEST, t).commit();
@@ -921,12 +921,12 @@ final class Engine implements Policy.Env, Watcher.Listener {
             } else {
                 setOwn(-1); // 막히지 않았거나(5G 그대로) 남의 값: 우리 것으로 기억하지 않는다
             }
-            s.line("5G 막기 실패(통신사 칸 값 " + after + ")", false);
+            s.line("5G 막기 실패(값 " + after + ")", false);
             restoreSelfTest(s, false);
             return;
         }
         setOwn(after);
-        s.line("5G 막기: 통신사 칸에서 5G가 빠진 것을 다시 읽어 확인", true);
+        s.line("5G 막기: 5G가 빠진 것을 다시 읽어 확인", true);
         tl.add(Timeline.Cat.ACT, "자가 점검: 5G 잠깐 막음");
         noteAction("자가 점검: 5G 잠깐 막음");
         watchSelfTest(s, nrBefore, now() + SELF_TEST_WATCH_MS, now());
@@ -940,16 +940,16 @@ final class Engine implements Policy.Env, Watcher.Listener {
         if (last >= 0 && t - last < SELF_TEST_GAP_MS) {
             return "방금 점검했음(" + Words.mmss(SELF_TEST_GAP_MS - (t - last)) + " 뒤 다시)";
         }
-        if (!radio.privileged()) return "통신사가 인정한 앱이 아님(처음 설정 필요)";
+        if (!radio.privileged()) return "5G/LTE 전환 권한이 없음(처음 설정 필요)";
         if (!CarrierPlan.hasNr(userMask)) return "LTE 우선이라 점검할 5G가 없음(5G 우선에서 해 주세요)";
         if (policy.state == Policy.State.COOLDOWN) return "지금 LTE로 쉬는 중이라 점검하지 않음";
-        if (policy.state == Policy.State.PROBE) return "지금 5G 재시험 중이라 점검하지 않음";
+        if (policy.state == Policy.State.PROBE) return "지금 5G 다시 확인 중이라 점검하지 않음";
         if (policy.state == Policy.State.OBSERVE || policy.state == Policy.State.SAFE_STOP) {
-            return "지금 제어할 수 없는 상태라 점검하지 않음";
+            return "지금 바꿀 수 없는 상태라 점검하지 않음";
         }
         String b = blockReason();
-        if (b != null) return "제어 불가: " + Words.blocked(b);
-        if (policy.settling()) return "방금 전환해서 망이 자리 잡는 중(잠시 뒤 다시)";
+        if (b != null) return "바꿀 수 없음: " + Words.blocked(b);
+        if (policy.settling()) return "방금 바꿔서 연결이 자리 잡는 중(잠시 뒤 다시)";
         if (radio.callGuard() != null) return "통화 중이라 점검하지 않음";
         if (own() >= 0) return "이전 막음을 정리하는 중(잠시 뒤 다시)";
         return null;
@@ -964,13 +964,13 @@ final class Engine implements Policy.Env, Watcher.Listener {
                 return;
             }
             if (!nrBefore) {
-                s.line("데이터를 쓰지 않아 원래 5G 칸이 붙어 있지 않았음 → 실제 연결 변화 확인은 건너뜀", true);
+                s.line("폰을 쓰지 않아 원래 5G가 붙어 있지 않았음 → 연결 변화 확인은 건너뜀", true);
                 restoreSelfTest(s, true);
             } else if (watcher != null && !watcher.nrConnected()) {
-                s.line("실제 연결에서 5G 칸이 빠짐(" + secs(now() - blockedAt) + "초)", true);
+                s.line("실제로 5G가 떨어짐(" + secs(now() - blockedAt) + "초)", true);
                 restoreSelfTest(s, true);
             } else if (now() >= deadline) {
-                s.line("6초 안에 실제 연결 변화는 안 보였음(통신사 칸은 막혀 있었음)", true);
+                s.line("6초 안에 연결 변화는 안 보였음(5G는 막혀 있었음)", true);
                 restoreSelfTest(s, true);
             } else {
                 watchSelfTest(s, nrBefore, deadline, blockedAt);
@@ -985,7 +985,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
         boolean ok;
         if (k == CarrierPlan.Carrier.UNKNOWN) {
             // 읽지 못함은 "남이 바꿈"이 아니다: 기록을 두고 미룬다(읽히면 정리가 되돌린다, 외부 검증 지적)
-            finishSelfTest(s, false, "통신사 칸을 읽지 못해 되돌리기를 미룸(다시 읽히면 자동으로 되돌림)");
+            finishSelfTest(s, false, "값을 읽지 못해 되돌리기를 미룸(다시 읽히면 자동으로 되돌림)");
             return;
         }
         if (k == CarrierPlan.Carrier.OPEN) {
@@ -1004,11 +1004,11 @@ final class Engine implements Policy.Env, Watcher.Listener {
             rec("self_test", "step", "restore", "ok", ok, "after", after);
         } else {
             setOwn(-1);
-            s.line("다른 쪽이 통신사 칸을 바꿔서 되돌리지 않음", false);
+            s.line("다른 쪽이 값을 바꿔서 되돌리지 않음", false);
             finishSelfTest(s, false, null);
             return;
         }
-        s.line("5G 되돌리기: 통신사 칸에 5G가 다시 들어간 것을 확인, 막음 기록 지움", ok);
+        s.line("5G 되돌리기: 5G가 다시 허용된 것을 확인, 막음 기록 지움", ok);
         tl.add(Timeline.Cat.ACT, ok ? "자가 점검: 5G 되돌림" : "자가 점검: 5G 되돌리기 실패");
         if (ok) noteAction("자가 점검: 5G 되돌림");
         finishSelfTest(s, passSoFar && ok, null);

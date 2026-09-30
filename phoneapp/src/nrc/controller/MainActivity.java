@@ -158,20 +158,20 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         today = text("", 15);
         body.addView(today);
         body.addView(section("자가 점검"));
-        body.addView(text("5G를 잠깐 막았다가 되돌려, 이 폰에서 컨트롤러가 실제로 5G/LTE를 바꿀 수 있는지 확인합니다. "
-                + "연결이 1~2초씩 두 번 끊길 수 있습니다.", 14));
+        body.addView(text("5G를 잠깐 막았다가 되돌려, 이 폰에서 앱이 실제로 5G/LTE를 바꿀 수 있는지 확인해요. "
+                + "연결이 1~2초씩 두 번 끊길 수 있어요.", 14));
         selfTestButton = button("자가 점검 시작", v -> confirmSelfTest());
         body.addView(selfTestButton);
         selfTestOut = text("", 14);
         selfTestOut.setText(selfTestText);
         body.addView(selfTestOut);
-        body.addView(text("참고: 상단바의 5G/LTE 표시는 폰이 데이터 사용 여부에 따라 스스로 바꾸기도 합니다"
-                + "(예: 데이터를 안 쓸 때도 5G로 보이고, 막 쓰기 시작하면 잠깐 LTE로 보임). 앱이 바꾼 것은 활동 기록의 '조치'로만 표시됩니다.", 13));
+        body.addView(text("참고: 상단바의 5G/LTE 표시는 폰이 스스로 바꾸기도 해요"
+                + "(예: 폰을 안 쓸 때도 5G로 보이고, 막 쓰기 시작하면 잠깐 LTE로 보임). 앱이 바꾼 것은 활동 기록에 [앱이 바꿈]으로만 표시돼요.", 13));
     }
 
     private void buildLog() {
-        body.addView(text("최근 24시간 · 최신 것이 위. [관찰] 폰·망이 한 일 · [판단] 앱이 내린 결론 · [조치] 앱이 실제로 바꾼 것. "
-                + "화면이 꺼진 동안의 5G 붙음·떨어짐은 판단에 쓰지 않으므로 목록에 싣지 않습니다.", 13));
+        body.addView(text("최근 24시간 · 최신 것이 위. [폰 상태] 폰·기지국이 한 일 · [앱 판단] 앱이 내린 결론 · [앱이 바꿈] 앱이 실제로 5G/LTE를 바꾼 것. "
+                + "화면이 꺼진 동안의 5G 붙음·끊김은 셈에 넣지 않아 목록에도 싣지 않아요.", 13));
         logText = text("", 14);
         body.addView(logText);
     }
@@ -195,8 +195,8 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         body.addView(button("배터리 최적화에서 빼기(오래 살아 있게)", v -> requestBatteryExemption()));
         body.addView(button("이 앱 알림 설정 열기", v -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()))));
-        body.addView(text("앱 알림을 꺼 두면 알림 창에 이 앱의 줄이 보이지 않고, 동작은 그대로 계속됩니다.\n"
-                + "5G 우선/LTE 우선은 삼성 설정(연결 → 모바일 네트워크 → 네트워크 모드)에서 고릅니다.", 13));
+        body.addView(text("앱 알림을 꺼 두면 알림 창에 이 앱의 줄이 보이지 않고, 동작은 그대로 계속돼요.\n"
+                + "5G 우선/LTE 우선은 삼성 설정(연결 → 모바일 네트워크 → 네트워크 모드)에서 골라요.", 13));
     }
 
     // ================================================================ 그리기
@@ -249,16 +249,16 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         s.roll(day, dayStart); // 어제 셈이 오늘로 보이지 않게(화면용 사본만)
         long rest = s.restMsNow(nowWall);
         StringBuilder b = new StringBuilder();
-        b.append("· LTE로 쉰 횟수: ").append(s.rests).append("회 · 총 ").append(rest / 60_000).append("분 ")
+        b.append("· LTE로 쉰 횟수: ").append(s.rests).append("번 · 모두 ").append(rest / 60_000).append("분 ")
                 .append(rest / 1000 % 60).append("초\n");
-        b.append("· 5G 재시험: ").append(s.probes).append("회(통과 ").append(s.pass).append(" · 실패 ").append(s.fail)
+        b.append("· 5G 다시 확인: ").append(s.probes).append("번(통과 ").append(s.pass).append(" · 실패 ").append(s.fail)
                 .append(" · 판정 못 함 ").append(s.undecided).append(")\n");
-        b.append("· 판단에 센 5G 끊김: ").append(s.countedDrops).append("번\n");
+        b.append("· 쉬기 기준에 넣은 5G 끊김: ").append(s.countedDrops).append("번\n");
         if (lastAction < 0) {
-            b.append("· 앱이 망을 바꾼 적: 아직 없음");
+            b.append("· 앱이 5G/LTE를 바꾼 적: 아직 없음");
         } else {
             long ago = Math.max(0, (nowWall - lastAction) / 60_000);
-            b.append("· 마지막 개입: ").append(NowText.clock(lastAction)).append(lastAction < dayStart ? "(어제 이전)" : "")
+            b.append("· 마지막으로 앱이 바꾼 때: ").append(NowText.clock(lastAction)).append(lastAction < dayStart ? "(어제 이전)" : "")
                     .append(" · ").append(ago).append("분 전 · ").append(lastText);
         }
         return b.toString();
@@ -267,7 +267,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
     private void renderLog() {
         List<Timeline.Entry> es = ControllerService.timeline(this).recent(System.currentTimeMillis() - 24L * 3_600_000);
         if (es.isEmpty()) {
-            logText.setText("아직 기록이 없습니다.");
+            logText.setText("아직 기록이 없어요.");
             return;
         }
         SpannableStringBuilder sb = new SpannableStringBuilder();
@@ -291,7 +291,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
             b.append("SIM: 아직 확인 안 됨\n");
         } else {
             b.append("SIM 번호(sub): ").append(r.sub).append('\n');
-            b.append("통신사 인정: ").append(r.privileged() ? "예" : "아니요(처음 설정 필요)").append('\n');
+            b.append("통신사 인정(5G/LTE 전환 권한): ").append(r.privileged() ? "예" : "아니요(처음 설정 필요)").append('\n');
             b.append("사용자 칸(설정 화면 값): ").append(mask(r.read(Radio.USER))).append('\n');
             b.append("통신사 칸(앱이 쉬기에 씀): ").append(mask(r.read(Radio.CARRIER))).append('\n');
             b.append("절전 칸: ").append(mask(r.read(Radio.POWER))).append('\n');
@@ -329,7 +329,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         PowerManager pm = getSystemService(PowerManager.class);
         boolean exempt = pm != null && pm.isIgnoringBatteryOptimizations(getPackageName());
         settingsStatus.setText("지금 상태: " + AppState.tile(this).subtitle
-                + "\n통신사 인정: " + (r == null ? "SIM 확인 중" : (r.privileged() ? "예" : "아니요 → 처음 설정 필요"))
+                + "\n5G/LTE 전환 권한: " + (r == null ? "SIM 확인 중" : (r.privileged() ? "있음" : "없음 → 처음 설정 필요"))
                 + "\n배터리 최적화 제외: " + (exempt ? "예" : "아니요"));
         autoButton.setText(AppState.auto(this) ? "자동 제어 끄기" : "자동 제어 켜기");
     }
@@ -348,7 +348,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
     private void confirmSelfTest() {
         new AlertDialog.Builder(this)
                 .setTitle("자가 점검")
-                .setMessage("5G를 잠깐 막았다가 되돌립니다. 그동안 연결이 1~2초씩 두 번 끊길 수 있습니다. 진행할까요?")
+                .setMessage("5G를 잠깐 막았다가 되돌려요. 그동안 연결이 1~2초씩 두 번 끊길 수 있어요. 진행할까요?")
                 .setPositiveButton("진행", (dlg, w) -> startSelfTest())
                 .setNegativeButton("취소", null)
                 .show();
@@ -374,7 +374,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
             }
         });
         if (!posted) {
-            addTestLine("앱의 상주 서비스가 떠 있지 않아 점검할 수 없음", false);
+            addTestLine("앱이 떠 있지 않아 점검할 수 없음", false);
             selfTestRunning = false;
         }
     }
