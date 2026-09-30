@@ -102,15 +102,21 @@ public final class SetupNotice extends BroadcastReceiver {
                 } else if (ok) {
                     showText(c, "권한 설정은 끝났어요 ✓ 다만 " + w + " (이 알림을 누르면 앱이 열려요)");
                 } else {
-                    showInput(c, "안 됐어요 ✗ " + lastLine() + " — 코드 창을 다시 띄우고 [코드 입력]으로 다시 해 주세요.");
+                    showInput(c, "안 됐어요 ✗ " + failLine(w) + (w != null ? " / ⚠ " + w : "")
+                            + " — 코드 창을 다시 띄우고 [코드 입력]으로 다시 해 주세요.");
                 }
             }
         };
         Setup.addListener(listener);
     }
 
-    private static String lastLine() {
+    /** 실패 이유: 경고 줄을 뺀 마지막 실패 줄(경고는 따로 붙인다). */
+    private static String failLine(String warning) {
         java.util.List<String[]> h = Setup.history();
+        for (int i = h.size() - 1; i >= 0; i--) {
+            String[] l = h.get(i);
+            if ("0".equals(l[1]) && !l[0].equals(warning)) return l[0];
+        }
         return h.isEmpty() ? "" : h.get(h.size() - 1)[0];
     }
 }

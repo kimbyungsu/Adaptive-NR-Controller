@@ -113,6 +113,7 @@ final class Setup {
                     emit(warning, false);
                 } else if (on == null && touchedAdb) {
                     warning = "무선 디버깅이 꺼졌는지 앱이 확인하지 못했어요 — 개발자 옵션에서 확인해 주세요";
+                    emit(warning, false);
                 }
                 lastResult = ok;
                 running = false;
@@ -248,12 +249,15 @@ final class Setup {
     private static void turnOffAdbWifi(Context c, Journal j, AdbKey key, int cp) throws InterruptedException {
         touchedAdb = true;
         int port = cp > 0 ? cp : find(c, AdbFind.CONNECT, 10_000);
-        if (port > 0) {
-            try {
-                AdbExec.run(key, "127.0.0.1", port, "settings put global adb_wifi_enabled 0");
-            } catch (AdbExec.Failure ignored) {
-                // 끄는 순간 연결이 끊겨 응답이 없을 수 있다
-            }
+        if (port <= 0) {
+            j.write("setup_adb_wifi_off", "port", -1);
+            emit("접속 포트를 찾지 못해 무선 디버깅 끄기 명령을 보내지 못했어요", false);
+            return;
+        }
+        try {
+            AdbExec.run(key, "127.0.0.1", port, "settings put global adb_wifi_enabled 0");
+        } catch (AdbExec.Failure ignored) {
+            // 끄는 순간 연결이 끊겨 응답이 없을 수 있다
         }
         Boolean on = adbWifiOn(c);
         for (int i = 0; i < 6 && Boolean.TRUE.equals(on); i++) {
