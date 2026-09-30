@@ -550,6 +550,19 @@ public final class PolicyTest {
         check("끄기 완료", e3.stopDone, 1);
         check("되돌린 것으로 봄", e3.lastStopRestored, Boolean.TRUE);
         check("끄기는 전환 아님", p3.switchesInHour(200 * S), 1);
+        // Wi-Fi 되돌리기: 되돌릴 앱의 막음이 이미 없었으면 "5G를 되돌림"이 아니라 "막음이 없어짐"으로 적는다
+        Object[] o4 = start();
+        Policy p4 = (Policy) o4[0];
+        FakeEnv e4 = (FakeEnv) o4[1];
+        drop(p4, 10);
+        drop(p4, 50);
+        drop(p4, 90);
+        e4.results.add(Policy.Result.of(Policy.Kind.UNCHANGED));
+        p4.wifi(100 * S, true);
+        check("Wi-Fi 되돌리기(바꾼 것 없음) 뒤 지켜보기", p4.state, Policy.State.WATCH);
+        check("이유는 막음 사라짐", e4.logged("state from COOLDOWN to WATCH why block_gone"), true);
+        check("되돌림이라 적지 않음", e4.logged("state from COOLDOWN to WATCH why wifi_restore"), false);
+        check("Wi-Fi 되돌리기(바꾼 것 없음)는 전환 아님", p4.switchesInHour(100 * S), 1);
     }
 
     static void keepLteMakesLteOriginal() {

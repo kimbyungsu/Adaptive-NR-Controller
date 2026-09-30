@@ -899,13 +899,19 @@ final class Policy {
             handleWriteProblem(t, r);
             return;
         }
-        if (r.kind == Kind.OK) switches.addLast(t); // 되돌릴 것이 이미 없었으면(UNCHANGED) 전환이 아니다
+        boolean changed = r.kind == Kind.OK;
+        if (changed) {
+            switches.addLast(t);
+        } else {
+            // 되돌릴 앱의 막음이 이미 없었다(다른 쪽이 덮음 등): "Wi-Fi에 붙어 5G를 되돌림"이라 적지 않는다(보관함 1db87213b27ee038)
+            env.log("block_gone", "why", "wifi_restore", "state", state.name());
+        }
         nrAllowedNow = true;
         settling = false;
         clearProbe();
         clear();
         lastBad = -1;
-        to(t, State.WATCH, "wifi_restore");
+        to(t, State.WATCH, changed ? "wifi_restore" : "block_gone");
     }
 
     private void finishStop(long t) {
