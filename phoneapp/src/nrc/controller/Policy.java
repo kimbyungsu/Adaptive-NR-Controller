@@ -23,7 +23,11 @@ final class Policy {
     enum State { INACTIVE, OBSERVE, GOOD, WATCH, COOLDOWN, PROBE, SAFE_STOP }
 
     /** BLOCKED = 쓰기 직전 통화 재확인에 막혀 쓰지 않았다(가드 막힘과 같게 처리). */
-    enum Kind { OK, ADOPTED, FAILED, ROLLED_BACK, BROKEN, BLOCKED }
+    /**
+     * UNCHANGED = 칸이 이미 원하는 상태여서 쓰지 않았다(막으려는데 이미 다른 쪽이 막아 둠, 풀려는데 앱의 막음이 이미 없음).
+     * 바꾼 것이 없으니 전환 한도·쉬기 횟수·단계에 넣지 않는다(외부 검증 지적, 2026-09-30: OK로 받으면 하지 않은 전환이 셈에 남았다).
+     */
+    enum Kind { OK, ADOPTED, FAILED, ROLLED_BACK, BROKEN, BLOCKED, UNCHANGED }
 
     /**
      * 쓰기 결과. ADOPTED면 쓰는 중에 관측된 사용자 값의 NR 포함 여부를 함께 준다.
@@ -414,21 +418,24 @@ final class Policy {
      * 컨트롤러 쓰기가 아니므로 정착 시간 초과는 SAFE_STOP이 아니다(사용자 모드 변경과 같음).
      */
     void blockGone(long t, String why) {
-        t = touch(t);
-        if (!nrAllowedNow) {
-            nrAllowedNow = true;
-            pendingRestore = false;
-            env.log("block_gone", "why", why, "state", state.name());
-            if (state == State.COOLDOWN) {
-                clearProbe();
-                clear();
-                to(t, State.WATCH, "block_gone");
-                syncHold(t);
-                if (controlled()) startSettle(t, false);
-            }
-            env.persist(state, nrAllowedNow);
-        }
+        t = touch(t); // 밀린 재시험이 먼저 돌아도 쓰기 결과가 UNCHANGED라 같은 곳(endRestWithoutWrite)에 닿는다
+        if (!nrAllowedNow) endRestWithoutWrite(t, why);
         after(t);
+    }
+
+    /** 앱의 막음이 이미 없다(쓰기 없음): "막아 둔 LTE"가 아니다. 쉬는 중이면 지켜보기로(단계 유지, 정착은 사용자 모드 변경과 같음). */
+    private void endRestWithoutWrite(long t, String why) {
+        env.log("block_gone", "why", why, "state", state.name());
+        nrAllowedNow = true;
+        pendingRestore = false;
+        if (state == State.COOLDOWN) {
+            clearProbe();
+            clear();
+            to(t, State.WATCH, "block_gone");
+            syncHold(t);
+            if (controlled()) startSettle(t, false);
+        }
+        env.persist(state, nrAllowedNow);
     }
 
     /** 종료 요청. 컨트롤러가 막아 둔 LTE면 원래 모드로 되돌린 뒤 끝낸다. 통화 중이면 통화가 끝날 때까지 미룬다. */
@@ -782,6 +789,11 @@ final class Policy {
             blockedSwitch(t, cause, levelInc, "call");
             return;
         }
+        if (r.kind == Kind.UNCHANGED) {
+            // 이미 다른 쪽이 5G를 막아 두었다: 바꾼 것이 없으니 쉬기·전환 한도·단계에 넣지 않는다(다른 쪽 막음은 엔진이 곧 제한 보류로 알린다)
+            blockedSwitch(t, cause, levelInc, "already_blocked");
+            return;
+        }
         if (r.kind != Kind.OK) {
             handleWriteProblem(t, r);
             return;
@@ -829,6 +841,11 @@ final class Policy {
             retryAt = r.doneAt > t ? r.doneAt : retryTime("call", t);
             return;
         }
+        if (r.kind == Kind.UNCHANGED) {
+            // 풀려는데 앱의 막음이 이미 없다(다른 쪽이 풀었거나 덮음): 재시험·전환 한도에 넣지 않고 막음이 사라졌을 때와 같이
+            endRestWithoutWrite(t, "probe");
+            return;
+        }
         if (r.kind != Kind.OK) {
             handleWriteProblem(t, r);
             return;
@@ -850,11 +867,11 @@ final class Policy {
         Result r = env.write(t, true, "restore");
         if (r.kind == Kind.BLOCKED) return; // 통화: 다음 사건에서 다시(복원 대기 유지)
         pendingRestore = false;
-        if (r.kind != Kind.OK) {
+        if (r.kind != Kind.OK && r.kind != Kind.UNCHANGED) {
             handleWriteProblem(t, r);
             return;
         }
-        switches.addLast(t);
+        if (r.kind == Kind.OK) switches.addLast(t); // 되돌릴 것이 이미 없었으면(UNCHANGED) 전환이 아니다
         nrAllowedNow = true;
         settling = false;
         clearProbe();
@@ -877,11 +894,11 @@ final class Policy {
         if (restoreGuard(t) != null) return; // 통화 중에는 보류 사유가 "call"이라 여기 오지 않는다(이중 확인)
         Result r = env.write(t, true, "wifi_restore");
         if (r.kind == Kind.BLOCKED) return; // 쓰기 직전 통화 감지: 통화 사건→유예 끝 예약에서 다시
-        if (r.kind != Kind.OK) {
+        if (r.kind != Kind.OK && r.kind != Kind.UNCHANGED) {
             handleWriteProblem(t, r);
             return;
         }
-        switches.addLast(t);
+        if (r.kind == Kind.OK) switches.addLast(t); // 되돌릴 것이 이미 없었으면(UNCHANGED) 전환이 아니다
         nrAllowedNow = true;
         settling = false;
         clearProbe();
@@ -903,7 +920,7 @@ final class Policy {
             return;
         }
         // OK·ADOPTED(쓰는 사이 사용자가 모드를 고름)는 되돌릴 것이 더 없다. 그 밖(실패·롤백)은 컨트롤러가 남긴 LTE가 그대로다.
-        boolean restored = r.kind == Kind.OK || r.kind == Kind.ADOPTED;
+        boolean restored = r.kind == Kind.OK || r.kind == Kind.ADOPTED || r.kind == Kind.UNCHANGED;
         if (restored) nrAllowedNow = true;
         env.log("stop_restore", "result", r.kind.name());
         done(restored);

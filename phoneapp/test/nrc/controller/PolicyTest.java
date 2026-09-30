@@ -152,6 +152,7 @@ public final class PolicyTest {
         blockedWithRetryHintProbesAtHint();
         userPicks5gWhileActualLteRetests();
         blockGoneEndsRest();
+        unchangedWriteIsNotASwitch();
         System.out.println((failed == 0 ? "OK " : "FAILED " + failed + " / ") + passed + " checks passed");
         if (failed > 0) System.exit(1);
     }
@@ -498,6 +499,57 @@ public final class PolicyTest {
         check("막음이 사라지면 쓰기 없이 끝", e2.writes, "[lte@90]");
         check("끄기 완료", e2.stopDone, 1);
         check("되돌린 것으로 봄", e2.lastStopRestored, Boolean.TRUE);
+    }
+
+    /**
+     * 쓰기 결과 UNCHANGED(칸이 이미 원하는 상태라 쓰지 않음)는 전환이 아니다: 쉬기·전환 한도·단계에 넣지 않는다.
+     * 외부 검증 반례(2026-09-30): 막으려는데 이미 다른 쪽이 막아 둠 → 하지 않은 쉬기가 셈에 남아 다음 쉬기가 2분 간격에 걸림,
+     * 화면 꺼진 사이 앱의 막음이 사라짐 → 화면 켜짐에 밀린 재시험이 전환 없이 재시험으로 들어감.
+     */
+    static void unchangedWriteIsNotASwitch() {
+        // 막으려는데 이미 막혀 있음
+        Object[] o = start();
+        Policy pol = (Policy) o[0];
+        FakeEnv env = (FakeEnv) o[1];
+        drop(pol, 10);
+        drop(pol, 50);
+        env.results.add(Policy.Result.of(Policy.Kind.UNCHANGED));
+        drop(pol, 90);
+        check("쉬지 않음", pol.state, Policy.State.WATCH);
+        check("전환 한도에 안 넣음", pol.switchesInHour(90 * S), 0);
+        check("단계 그대로", pol.level, 0);
+        check("쉬기 필요 없음 기록", env.logged("suppressed"), true);
+        drop(pol, 130);
+        drop(pol, 140);
+        drop(pol, 150);
+        check("다음 쉬기는 2분 간격에 걸리지 않음", pol.state, Policy.State.COOLDOWN);
+        check("쓰기 시도", env.writes, "[lte@90, lte@150]");
+        // 화면 꺼진 사이 앱의 막음이 사라짐 → 화면 켜짐에 밀린 재시험
+        Object[] o2 = start();
+        Policy p2 = (Policy) o2[0];
+        FakeEnv e2 = (FakeEnv) o2[1];
+        drop(p2, 10);
+        drop(p2, 50);
+        drop(p2, 90);
+        p2.screen(100 * S, false);
+        e2.results.add(Policy.Result.of(Policy.Kind.UNCHANGED));
+        p2.screen(391 * S, true);
+        check("재시험 대신 지켜보기", p2.state, Policy.State.WATCH);
+        check("막아 둔 LTE 아님", p2.nrAllowedNow, true);
+        check("전환은 처음 쉬기 1번뿐", p2.switchesInHour(391 * S), 1);
+        check("막음 사라짐 기록", e2.logged("block_gone"), true);
+        // 끄기: 되돌릴 것이 이미 없으면 되돌린 것으로 보고 끝낸다(전환 아님)
+        Object[] o3 = start();
+        Policy p3 = (Policy) o3[0];
+        FakeEnv e3 = (FakeEnv) o3[1];
+        drop(p3, 10);
+        drop(p3, 50);
+        drop(p3, 90);
+        e3.results.add(Policy.Result.of(Policy.Kind.UNCHANGED));
+        p3.stop(200 * S);
+        check("끄기 완료", e3.stopDone, 1);
+        check("되돌린 것으로 봄", e3.lastStopRestored, Boolean.TRUE);
+        check("끄기는 전환 아님", p3.switchesInHour(200 * S), 1);
     }
 
     static void keepLteMakesLteOriginal() {

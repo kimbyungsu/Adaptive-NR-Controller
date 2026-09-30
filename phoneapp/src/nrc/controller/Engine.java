@@ -90,6 +90,8 @@ final class Engine implements Policy.Env, Watcher.Listener {
     private long stateSinceWall = System.currentTimeMillis();
     private String restWhy;
     private long oosAtT = -1;
+    /** 쓰기에서 다른 쪽 막음을 봤다: 다음 after에서 제한을 곧바로 다시 읽는다(주기 확인을 기다리지 않게). */
+    private boolean restrictionsStale;
     /** 통신사 칸에 앱이 건 것이 아닌 5G 막음이 있다(주기 확인에서 갱신). */
     private boolean carrierExternal;
     private boolean selfTesting;
@@ -403,15 +405,19 @@ final class Engine implements Policy.Env, Watcher.Listener {
         long own = own();
         CarrierPlan.Carrier k = CarrierPlan.classify(cur, own);
         if (CarrierPlan.hasNr(cur) == allowNr) {
+            // 이미 원하는 상태: 쓰지 않았으니 판단 규칙에 "바꾼 것 없음"으로 알린다(전환·쉬기로 세지 않게, 외부 검증 지적)
             if (allowNr && own >= 0) setOwn(-1);
+            if (!allowNr) restrictionsStale = true; // 막으려는데 이미 막혀 있음 = 다른 쪽 막음: 제한 보류를 곧바로 새로 본다
             rec("w_carrier", "why", why, "allowNr", allowNr, "result", "already", "carrier", cur);
-            return Policy.Result.of(Policy.Kind.OK, now());
+            return Policy.Result.of(Policy.Kind.UNCHANGED, now());
         }
         if (allowNr && k != CarrierPlan.Carrier.OURS) {
-            // NR이 빠져 있지만 우리가 남긴 값이 아니다(통신사 앱 등): 건드리지 않는다. 외부 제한 보류가 판단을 멈춘다
+            // NR이 빠져 있지만 우리가 남긴 값이 아니다(통신사 앱 등): 건드리지 않는다. 앱의 막음은 이미 없으므로 "바꾼 것 없음",
+            // 외부 제한 보류가 판단을 멈춘다
             if (own >= 0) setOwn(-1); // 우리 기록은 남이 덮어 더는 유효하지 않다
+            restrictionsStale = true;
             rec("w_carrier", "why", why, "allowNr", true, "result", "external_left", "carrier", cur, "own", own);
-            return Policy.Result.of(Policy.Kind.OK, now());
+            return Policy.Result.of(Policy.Kind.UNCHANGED, now());
         }
         long target = CarrierPlan.target(cur, allowNr);
         if (!allowNr && !setOwn(target)) { // 선기록: 쓰기 전에 "이 SIM에 이 값을 남김"을 기록한다
@@ -621,6 +627,10 @@ final class Engine implements Policy.Env, Watcher.Listener {
 
     /** 사건 처리 끝: 우리 막음 정리, 다음 확인 시각 예약, 타일·화면 갱신. */
     private void after(long t) {
+        if (restrictionsStale && !stopped && policy != null) {
+            restrictionsStale = false;
+            refreshRestrictions(t);
+        }
         reconcile("event", false);
         checkBlockGone(t);
         reschedule();
@@ -771,9 +781,12 @@ final class Engine implements Policy.Env, Watcher.Listener {
                 if (!"screen_off".equals(was)) tl.add(Timeline.Cat.JUDGE, "다시 지켜봄(" + Words.hold(was) + " 끝남)");
                 break;
             }
-            case "suppressed":
-                tl.add(Timeline.Cat.JUDGE, "LTE로 쉬려다 미룸: " + Words.guard(str(kv, "why")));
+            case "suppressed": {
+                String why = str(kv, "why");
+                tl.add(Timeline.Cat.JUDGE, "already_blocked".equals(why) ? "LTE로 쉬게 할 필요 없음: " + Words.guard(why)
+                        : "LTE로 쉬려다 미룸: " + Words.guard(why));
                 break;
+            }
             case "user_mode":
                 if (kv(kv, "from") != null) {
                     tl.add(Timeline.Cat.OBS, "사용자가 " + (Boolean.TRUE.equals(kv(kv, "nr")) ? "5G 우선" : "LTE 우선") + "을 고름");
@@ -816,10 +829,12 @@ final class Engine implements Policy.Env, Watcher.Listener {
             case "own_cleared":
                 if ("EXTERNAL".equals(str(kv, "as"))) tl.add(Timeline.Cat.JUDGE, "다른 쪽이 값을 바꿔 앱의 막음 기록을 지움");
                 break;
-            case "block_gone":
-                tl.add(Timeline.Cat.JUDGE, "앱이 걸어 둔 5G 막음이 없어져 쉬기를 끝냄("
-                        + ("open".equals(str(kv, "why")) ? "5G가 다시 허용돼 있음" : "다른 쪽이 값을 바꿈") + ")");
+            case "block_gone": {
+                String why = str(kv, "why");
+                tl.add(Timeline.Cat.JUDGE, "앱이 걸어 둔 5G 막음이 없어져 쉬기를 끝냄"
+                        + ("open".equals(why) ? "(5G가 다시 허용돼 있음)" : "external".equals(why) ? "(다른 쪽이 값을 바꿈)" : ""));
                 break;
+            }
             case "lift_deferred":
                 tl.add(Timeline.Cat.JUDGE, "5G 막음 풀기를 통화 뒤로 미룸");
                 break;
@@ -1015,7 +1030,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
                 return;
             }
             if (!nrBefore) {
-                s.line("데이터를 주고받지 않아 원래 5G가 붙어 있지 않았음 → 연결 변화 확인은 건너뜀", true);
+                s.line("점검 전부터 5G가 붙어 있지 않았음 → 연결 변화 확인은 건너뜀", true);
                 restoreSelfTest(s, true);
             } else if (watcher != null && !watcher.nrConnected()) {
                 s.line("실제로 5G가 떨어짐(" + secs(now() - blockedAt) + "초)", true);

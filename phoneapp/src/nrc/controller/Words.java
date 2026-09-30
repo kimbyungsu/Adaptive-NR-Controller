@@ -137,6 +137,8 @@ final class Words {
                 return "큰 파일을 주고받는 중(끝나면 다시)";
             case "no_service":
                 return "서비스 없음";
+            case "already_blocked":
+                return "다른 쪽이 이미 5G를 막아 둠";
             case "call":
             case "call_unknown":
                 return "통화 중이거나 통화 확인이 안 됨";
