@@ -11,12 +11,15 @@ trap 'rm -rf "$OUT"' EXIT
 SRC=()
 for f in src/nrc/controller/Params.java src/nrc/controller/Policy.java src/nrc/controller/UseSegments.java \
          src/nrc/controller/TileText.java src/nrc/controller/CarrierPlan.java \
+         src/nrc/controller/Words.java src/nrc/controller/DaySummary.java \
+         src/nrc/controller/Live.java src/nrc/controller/NowText.java test/nrc/controller/NowTextTest.java \
          test/nrc/controller/PolicyTest.java test/nrc/controller/UseSegmentsTest.java \
-         test/nrc/controller/TileTextTest.java test/nrc/controller/CarrierPlanTest.java; do
+         test/nrc/controller/TileTextTest.java test/nrc/controller/CarrierPlanTest.java \
+         test/nrc/controller/ObserveTest.java; do
   [ -f "$HERE/$f" ] && SRC+=("$(to_arg "$HERE/$f")")
 done
 "$JDK/bin/javac$EXE" -encoding UTF-8 -d "$(to_arg "$OUT")" "${SRC[@]}"
-for t in UseSegmentsTest PolicyTest TileTextTest CarrierPlanTest; do
+for t in UseSegmentsTest PolicyTest TileTextTest CarrierPlanTest ObserveTest NowTextTest; do
   [ -f "$HERE/test/nrc/controller/$t.java" ] || continue
   echo "== $t"
   "$JDK/bin/java$EXE" -Dsun.stdout.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "$(to_arg "$OUT")" "nrc.controller.$t" | tail -2

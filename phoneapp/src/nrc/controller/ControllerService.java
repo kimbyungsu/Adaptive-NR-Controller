@@ -58,6 +58,8 @@ public final class ControllerService extends Service implements Engine.Host,
     private final Handler main = new Handler(Looper.getMainLooper());
     private ScheduledExecutorService worker;
     private Journal journal;
+    /** 활동 기록(관측 화면). 프로세스에 하나. */
+    private Timeline timeline;
     private Radio radio;
     private Engine engine;
     private ScheduledFuture<?> leftoverRetry;
@@ -83,6 +85,42 @@ public final class ControllerService extends Service implements Engine.Host,
             AppState.refreshTile(c);
             return false;
         }
+    }
+
+    /** 같은 안내를 연달아 쌓지 않는다(엔진을 못 띄운 이유 등). */
+    private String lastNote;
+
+    private void noteOnce(String key, String text) {
+        if (key.equals(lastNote)) return;
+        lastNote = key;
+        timeline.add(Timeline.Cat.JUDGE, text);
+    }
+
+    /** 활동 기록(프로세스에 하나). 화면도 이걸 읽는다. */
+    static Timeline timeline(Context c) {
+        return Timeline.get(c.getFilesDir());
+    }
+
+    /** 관측 화면이 읽는 엔진의 지금 모습(엔진이 없으면 null). */
+    static Live live() {
+        ControllerService s = current;
+        Engine e = s == null ? null : s.engine;
+        return e == null ? null : e.live();
+    }
+
+    /** 자가 점검(관측 화면 버튼): 작업 스레드에서 엔진이 한다. 결과 줄은 작업 스레드에서 sink로 온다. 서비스가 없으면 false. */
+    static boolean selfTest(Engine.TestSink sink) {
+        ControllerService s = current;
+        if (s == null) return false;
+        s.post("self_test", () -> {
+            if (s.engine != null) {
+                s.engine.selfTest(sink);
+            } else {
+                sink.line("자동 제어가 꺼져 있어 점검할 수 없음", false);
+                sink.done(false);
+            }
+        });
+        return true;
     }
 
     /** 개발 시험(TestCommand): 엔진에 시험용 쉬기를 넘긴다. 서비스·엔진이 없으면 false. */
@@ -114,6 +152,7 @@ public final class ControllerService extends Service implements Engine.Host,
         worker = Executors.newSingleThreadScheduledExecutor();
         File dir = getExternalFilesDir(null);
         journal = new Journal(dir != null ? dir : getFilesDir());
+        timeline = timeline(this);
         journal.write("service_start");
         prefs = AppState.prefs(this);
         prefs.registerOnSharedPreferenceChangeListener(this);
@@ -208,15 +247,17 @@ public final class ControllerService extends Service implements Engine.Host,
         radio = Radio.open(this);
         if (radio == null) {
             journal.write("engine_wait", "why", "no_sim");
+            noteOnce("no_sim", "SIM을 아직 확인하지 못해 자동 제어를 기다리는 중");
             publishIdle();
             return;
         }
         if (!radio.privileged()) {
             journal.write("engine_wait", "why", "no_privilege", "own", Engine.ownMask(this, radio.sub));
+            noteOnce("no_privilege", "통신사가 인정한 앱이 아니라 자동 제어를 시작하지 못함(처음 설정 필요)");
             publishIdle();
             return;
         }
-        engine = new Engine(this, radio, journal, worker, this);
+        engine = new Engine(this, radio, journal, timeline, worker, this);
         engine.start(wifi, isInteractive());
     }
 
@@ -278,6 +319,7 @@ public final class ControllerService extends Service implements Engine.Host,
         long after = r.read(Radio.CARRIER);
         boolean ok = called && CarrierPlan.hasNr(after);
         journal.write("lift", "why", why, "ok", ok, "before", c, "after", after);
+        timeline.add(Timeline.Cat.ACT, ok ? "남아 있던 5G 막음 해제(자동 제어 꺼진 뒤 정리)" : "5G 막음 해제 실패");
         if (ok) Engine.setOwn(this, r.sub, -1);
     }
 

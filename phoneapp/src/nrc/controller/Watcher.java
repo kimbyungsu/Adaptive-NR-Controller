@@ -44,6 +44,9 @@ final class Watcher extends TelephonyCallback implements
 
         void onNrOff(long t, long sinceDataMs, long dwellMs);
 
+        /** 5G 칸이 붙었다(관측 화면 기록용, 판단에는 쓰지 않는다). */
+        void onNrOn(long t, long sinceDataMs);
+
         void onDataActivity(long t, boolean active);
 
         void onDataConnection(long t, int state);
@@ -72,6 +75,10 @@ final class Watcher extends TelephonyCallback implements
     private long lastSigAt = -1;
     private int lastLteBucket = Integer.MIN_VALUE;
     private boolean lastNrSig;
+    private int display = -1;
+    private int lteRsrpNow = Integer.MAX_VALUE;
+    private int nrRsrpNow = Integer.MAX_VALUE;
+    private int nrSinrNow = Integer.MAX_VALUE;
 
     Watcher(Journal log, Listener out) {
         this.log = log;
@@ -153,6 +160,9 @@ final class Watcher extends TelephonyCallback implements
                 }
             }
             sig = "lte=" + fmt(lteRsrp) + ",nr=" + fmt(nrRsrp) + "/" + fmt(nrSinr);
+            lteRsrpNow = lteRsrp;
+            nrRsrpNow = nrRsrp;
+            nrSinrNow = nrSinr;
             long t = now();
             boolean nrSig = nrRsrp != Integer.MAX_VALUE;
             int bucket = lteRsrp == Integer.MAX_VALUE ? Integer.MAX_VALUE : Math.floorDiv(lteRsrp, 5);
@@ -200,8 +210,34 @@ final class Watcher extends TelephonyCallback implements
     @Override
     public void onDisplayInfoChanged(TelephonyDisplayInfo info) {
         // 표시값은 판단에 쓰지 않는다(P6). 사용자에게 보이는 아이콘과 비교하려고 기록만 한다.
-        safely("display", () -> log.write("display", "net", info.getNetworkType(),
-                "override", info.getOverrideNetworkType()));
+        safely("display", () -> {
+            display = info.getOverrideNetworkType();
+            log.write("display", "net", info.getNetworkType(), "override", display);
+        });
+    }
+
+    // ---------- 관측 화면용 지금 값(작업 스레드에서 읽는다) ----------
+
+    /** 실제 연결(기지국 묶음 기준)에 5G 칸이 붙어 있는지. */
+    boolean nrConnected() {
+        return nrConnected;
+    }
+
+    /** 상단바 표시 종류(TelephonyDisplayInfo override: 0 없음·1 LTE+·3 5G 등, 모름 -1). */
+    int display() {
+        return display;
+    }
+
+    int lteRsrp() {
+        return lteRsrpNow;
+    }
+
+    int nrRsrp() {
+        return nrRsrpNow;
+    }
+
+    int nrSinr() {
+        return nrSinrNow;
     }
 
     /** 30초 주기: 사용 구간을 지금까지의 조각으로 기록한다. */
@@ -220,6 +256,7 @@ final class Watcher extends TelephonyCallback implements
             nrOnAt = t;
             nrConnected = true;
             log.write("nr_on", "by", "pcc", "sinceDataMs", use.sinceActive(t));
+            out.onNrOn(t, use.sinceActive(t));
             return;
         }
         long dwell = nrOnAt >= 0 ? t - nrOnAt : -1;

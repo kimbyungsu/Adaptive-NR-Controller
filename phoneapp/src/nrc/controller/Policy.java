@@ -433,6 +433,56 @@ final class Policy {
         return settling;
     }
 
+    // ================================================================ 관측 화면용 읽기(판단에 영향 없음, 2026-09-30)
+
+    Params params() {
+        return p;
+    }
+
+    /** 판단 창(p.w) 안의 센 끊김 수. */
+    int dropsInWindow(long t) {
+        int n = 0;
+        for (long[] d : drops) if (t - d[0] <= p.w) n++;
+        return n;
+    }
+
+    /** 판단 창 안에서 가장 오래된 센 끊김 시각(없으면 -1). 이 시각 + p.w에 창에서 빠진다. */
+    long oldestDropInWindow(long t) {
+        for (long[] d : drops) if (t - d[0] <= p.w) return d[0];
+        return -1;
+    }
+
+    int probeDropCount() {
+        return probeDrops;
+    }
+
+    long coolUntilAt() {
+        return coolUntil;
+    }
+
+    long evalStartAt() {
+        return evalStart;
+    }
+
+    /** 재시험 평가의 데이터 사용 누적(지금 쓰는 중이면 지금까지 포함). */
+    long useMsAt(long t) {
+        return useAcc + (useFrom >= 0 ? Math.max(0, t - useFrom) : 0);
+    }
+
+    String holdWhy() {
+        return hold;
+    }
+
+    int switchesInHour(long t) {
+        int n = 0;
+        for (long s : switches) if (t - s < 3_600_000) n++;
+        return n;
+    }
+
+    long lastSwitchAt() {
+        return switches.isEmpty() ? -1 : switches.peekLast();
+    }
+
     // ================================================================ 내부: 흐름
 
     private long touch(long t) {
