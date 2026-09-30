@@ -170,6 +170,15 @@ public final class PolicyTest {
         check("판단 창은 비워짐", pol.dropsInWindow(90 * S), 0);
         pol.nrOff(100 * S, 30 * S, 5 * S, true); // 데이터 안 쓰는 중(쉬는 중이기도 함)
         check("안 센 끊김은 계기판 그대로", pol.countedNr(), 3L);
+        check("셋 다 감시 끊김", pol.countedWatchNr(), 3L);
+        // 경계: 재시험 통과 예약과 같은 시각에 들어온 끊김은 통과 처리 뒤 감시 끊김으로 센다(표시도 감시 쪽)
+        pol.advance(390 * S); // 재시험 시작
+        pol.dataActivity(400 * S, true); // 평가 402초부터, 데이터 60초면 462초 통과
+        pol.nrOff(462 * S, 0, 5 * S, true);
+        check("통과 뒤 감시 상태", pol.state, Policy.State.WATCH);
+        check("경계 끊김은 감시로 셈", pol.countedWatchNr(), 4L);
+        check("재시험으로는 안 셈", pol.countedProbeNr(), 0L);
+        check("판단 창 1", pol.dropsInWindow(462 * S), 1);
     }
 
     static void threeActiveDropsThenProbePass() {

@@ -331,12 +331,12 @@ final class Policy {
             if (state == State.PROBE) {
                 if (evalOpen(t) && pendingCause == null) {
                     probeDrops++;
-                    countedNr++;
+                    countedProbeNr++;
                     if (probeDrops >= p.nProbe) trySwitchLte(t, "probe_drops", 1);
                 }
             } else {
                 drops.addLast(new long[]{t, dwellMs});
-                countedNr++;
+                countedWatchNr++;
                 lastBad = t;
                 to(t, State.WATCH, "active_drop");
                 String c = cause(t);
@@ -443,11 +443,23 @@ final class Policy {
      * 판단에 센 사건의 누적 수(계기판, 판단에는 쓰지 않는다). 쉬기를 결정하면 판단 창을 비우므로 창 크기 변화로는
      * "이 사건을 셌는지" 알 수 없다(외부 검증 지적) → 셀 때마다 늘어나는 이 값으로 가린다.
      */
-    private long countedNr;
+    private long countedWatchNr;
+    private long countedProbeNr;
     private long countedOos;
 
+    /** 판단에 센 5G 끊김 전체(감시 + 재시험). */
     long countedNr() {
-        return countedNr;
+        return countedWatchNr + countedProbeNr;
+    }
+
+    /** 감시(판단 창) 끊김으로 센 수. 한 입력 안에서 재시험 통과 예약이 먼저 돌면 그 끊김은 여기로 센다. */
+    long countedWatchNr() {
+        return countedWatchNr;
+    }
+
+    /** 재시험 중 끊김으로 센 수. */
+    long countedProbeNr() {
+        return countedProbeNr;
     }
 
     long countedOos() {

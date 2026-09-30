@@ -306,10 +306,13 @@ final class Engine implements Policy.Env, Watcher.Listener {
             after(t);
             return;
         }
-        long before = policy.countedNr();
-        boolean probing = policy.state == Policy.State.PROBE;
+        // 어느 쪽(감시/재시험)으로 셌는지는 호출 뒤 계기판으로 가린다. 호출 전 상태로 정하면, 입력을 처리하기 전에
+        // 밀린 재시험 통과 예약이 먼저 돌아 감시 끊김으로 센 경우를 "재시험"으로 잘못 적는다(외부 검증 지적)
+        long watch0 = policy.countedWatchNr();
+        long probe0 = policy.countedProbeNr();
         policy.nrOff(t, sinceDataMs, dwellMs, screenOn);
-        boolean counted = policy.countedNr() > before;
+        boolean byProbe = policy.countedProbeNr() > probe0;
+        boolean counted = byProbe || policy.countedWatchNr() > watch0;
         if (counted) {
             rollSummary();
             sum.onCountedDrop();
@@ -317,7 +320,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
         }
         if (screenOn) {
             String how = !active ? "데이터 안 쓰는 중 · 판단에 안 셈"
-                    : counted ? "데이터 쓰는 중 · 판단에 셈" + countText(t, probing)
+                    : counted ? "데이터 쓰는 중 · 판단에 셈" + countText(t, byProbe)
                     : "데이터 쓰는 중 · 지금은 판단 쉼";
             tl.add(Timeline.Cat.OBS, "실제 연결 5G → LTE(" + how + ")");
         }
@@ -332,9 +335,9 @@ final class Engine implements Policy.Env, Watcher.Listener {
     }
 
     /** 센 끊김 뒤 표시. 쉬기로 넘어갔으면 판단 창이 비워지므로 "쉬기 결정"으로 적는다. */
-    private String countText(long t, boolean wasProbing) {
-        if (policy.state == Policy.State.COOLDOWN) return wasProbing ? " → 재시험 실패, 다시 쉬기" : " → 기준에 닿아 쉬기 결정";
-        if (wasProbing) return " " + policy.probeDropCount() + "/" + params.nProbe + "(재시험)";
+    private String countText(long t, boolean probeCounted) {
+        if (policy.state == Policy.State.COOLDOWN) return probeCounted ? " → 재시험 실패, 다시 쉬기" : " → 기준에 닿아 쉬기 결정";
+        if (probeCounted) return " " + policy.probeDropCount() + "/" + params.nProbe + "(재시험)";
         return " " + policy.dropsInWindow(t) + "/" + params.nDrop;
     }
 
