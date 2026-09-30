@@ -407,7 +407,9 @@ final class Engine implements Policy.Env, Watcher.Listener {
         if (CarrierPlan.hasNr(cur) == allowNr) {
             // 이미 원하는 상태: 쓰지 않았으니 판단 규칙에 "바꾼 것 없음"으로 알린다(전환·쉬기로 세지 않게, 외부 검증 지적)
             if (allowNr && own >= 0) setOwn(-1);
-            if (!allowNr) restrictionsStale = true; // 막으려는데 이미 막혀 있음 = 다른 쪽 막음: 제한 보류를 곧바로 새로 본다
+            // 막으려는데 이미 막혀 있음: 다른 쪽 막음이거나, 통화 등으로 풀기를 미룬 앱의 막음(쉬는 중이 아니니 reconcile이 뒤에 푼다).
+            // 다른 쪽 막음이면 제한 보류가 걸리도록 곧바로 새로 본다
+            if (!allowNr) restrictionsStale = true;
             rec("w_carrier", "why", why, "allowNr", allowNr, "result", "already", "carrier", cur);
             return Policy.Result.of(Policy.Kind.UNCHANGED, now());
         }

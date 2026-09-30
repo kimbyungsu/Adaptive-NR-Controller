@@ -138,7 +138,7 @@ final class Words {
             case "no_service":
                 return "서비스 없음";
             case "already_blocked":
-                return "다른 쪽이 이미 5G를 막아 둠";
+                return "5G가 이미 막혀 있음";
             case "call":
             case "call_unknown":
                 return "통화 중이거나 통화 확인이 안 됨";

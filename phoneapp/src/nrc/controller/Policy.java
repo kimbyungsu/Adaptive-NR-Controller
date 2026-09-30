@@ -790,7 +790,8 @@ final class Policy {
             return;
         }
         if (r.kind == Kind.UNCHANGED) {
-            // 이미 다른 쪽이 5G를 막아 두었다: 바꾼 것이 없으니 쉬기·전환 한도·단계에 넣지 않는다(다른 쪽 막음은 엔진이 곧 제한 보류로 알린다)
+            // 5G가 이미 막혀 있다(다른 쪽 막음, 또는 통화 등으로 풀기를 미룬 앱의 막음 — 쉬는 중이 아니니 엔진이 뒤에 푼다):
+            // 바꾼 것이 없으니 쉬기·전환 한도·단계에 넣지 않는다(다른 쪽 막음은 엔진이 곧 제한 보류로 알린다)
             blockedSwitch(t, cause, levelInc, "already_blocked");
             return;
         }
