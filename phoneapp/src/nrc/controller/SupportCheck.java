@@ -9,10 +9,9 @@ package nrc.controller;
  */
 final class SupportCheck {
     /** 처음 설정이 이 폰에서 어떻게 끝났는지. */
-    static final String SETUP_UNKNOWN = "unknown";    // 아직 안 해 봄
-    static final String SETUP_WORKS = "works";        // 등록 성공(또는 권한 확인)
+    static final String SETUP_UNKNOWN = "unknown";    // 아직 안 해 봄(또는 일시 실패)
     static final String SETUP_BLOCKED_PATCH = "blocked_patch"; // overrideConfig가 shell 차단(패치됨)
-    static final String SETUP_BLOCKED_OTHER = "blocked_other"; // 다른 이유로 실패
+    static final String SETUP_BLOCKED_OTHER = "blocked_other"; // 다른 이유로 실패(일시 실패는 제외)
 
     static final class Info {
         String appVersion;
@@ -55,8 +54,9 @@ final class SupportCheck {
         String verdict;
         boolean supported;
         boolean known;
-        if (f.privileged || SETUP_WORKS.equals(f.setupResult)) {
-            verdict = "이 폰에서 5G/LTE 전환 권한을 얻었어요 — 됩니다 ✓";
+        // "됨"은 지금 실제로 전환 권한이 있는지로만 확정한다(과거 등록 성공 기록만으로 단정하지 않는다, 외부 검증 지적).
+        if (f.privileged) {
+            verdict = "이 폰에서 5G/LTE 전환 권한이 있어요 — 됩니다 ✓";
             supported = true;
             known = true;
         } else if (SETUP_BLOCKED_PATCH.equals(f.setupResult)) {
@@ -104,10 +104,9 @@ final class SupportCheck {
     }
 
     private static String setupText(String r) {
-        if (SETUP_WORKS.equals(r)) return "성공(됨)";
         if (SETUP_BLOCKED_PATCH.equals(r)) return "막힘(보안 잠금, overrideConfig가 shell 차단)";
         if (SETUP_BLOCKED_OTHER.equals(r)) return "실패(다른 이유)";
-        return "아직 안 해 봄";
+        return "아직 안 해 봄(또는 성공은 '지금 전환 권한' 줄로 확인)";
     }
 
     private static String nz(String s) {

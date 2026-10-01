@@ -29,11 +29,12 @@ public final class SupportCheckTest {
         s = SupportCheck.of(f);
         is(s.known && s.supported && s.verdict.contains("됩니다"), "권한 있으면 됨");
 
-        // 설정 성공
+        // 등록은 됐지만(기록 없음) 지금 권한이 없으면 '됨'이라 단정하지 않는다
         f = base();
-        f.setupResult = SupportCheck.SETUP_WORKS;
+        f.privileged = false;
+        f.setupResult = SupportCheck.SETUP_UNKNOWN;
         s = SupportCheck.of(f);
-        is(s.known && s.supported, "설정 성공 = 됨");
+        is(!s.supported, "권한 없으면 됨 아님");
 
         // 보안 잠금으로 막힘(지원 안 함)
         f = base();

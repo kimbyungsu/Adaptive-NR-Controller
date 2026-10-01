@@ -80,7 +80,13 @@ public final class SetupTool {
             out("AFTER " + (after == null ? "null" : Arrays.toString(after)));
             out(ok ? "RESULT ok" : "RESULT fail not_applied");
         } catch (Throwable t) {
-            out("RESULT fail " + t.getClass().getSimpleName() + " " + t.getMessage());
+            // 반사 호출(overrideConfig)에서 난 예외는 InvocationTargetException으로 감싸진다 → 원인을 풀어 유형·메시지를 내보낸다
+            // (보안 잠금 "overrideConfig cannot be invoked by shell"이 분류기에 전달되도록)
+            Throwable c = t;
+            while (c instanceof java.lang.reflect.InvocationTargetException && c.getCause() != null) {
+                c = c.getCause();
+            }
+            out("RESULT fail " + c.getClass().getSimpleName() + " " + c.getMessage());
         }
     }
 
