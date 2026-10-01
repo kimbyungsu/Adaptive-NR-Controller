@@ -281,6 +281,9 @@ public final class SetupActivity extends Activity implements Setup.Listener {
         StartSteps st = StartSteps.of(f);
         boolean running = Setup.running();
         String w = running ? null : Setup.warning();
+        // 경고는 모두 무선 디버깅이 켜진 채라는 것: 지금 꺼진 것이 읽히면 해결된 것으로 본다(사용자가 직접 끈 경우, 외부 검증 보완)
+        boolean resolved = w != null && Boolean.FALSE.equals(f.adbWifi);
+        if (resolved) w = null;
         summary.setText(running ? "처음 설정 진행 중… (코드 창은 그대로 두세요)"
                 : st.remaining > 0 ? "남은 단계 " + st.remaining + "개 — ▶ 표시가 지금 할 단계예요"
                 : w != null ? "단계는 모두 끝났지만 맨 위 ⚠를 확인해 주세요" : "모든 단계가 끝났어요 ✓");
@@ -299,6 +302,7 @@ public final class SetupActivity extends Activity implements Setup.Listener {
         for (String[] l : h) p.append("1".equals(l[1]) ? "✓ " : "✗ ").append(l[0]).append('\n');
         if (running) p.append("… 진행 중(코드 창은 그대로 두세요)\n");
         if (w != null) p.append("⚠ ").append(w).append('\n');
+        if (resolved) p.append("✓ 지금은 무선 디버깅이 꺼져 있어요(해결)\n");
         String shown = p.toString().trim();
         String all = noteText != null ? (shown.isEmpty() ? noteText : noteText + "\n\n" + shown) : shown;
         progress.setText(all);
