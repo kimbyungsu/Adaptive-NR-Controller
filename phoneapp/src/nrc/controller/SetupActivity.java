@@ -46,6 +46,8 @@ public final class SetupActivity extends Activity implements Setup.Listener {
     private final Set<Integer> closed = new HashSet<>();
     private TextView codeWindow;
     private TextView progress;
+    private LinearLayout noticeBox;
+    private TextView doneTitle;
     private TextView modeLine;
     private String noteText;
     private EditText codeField;
@@ -111,6 +113,24 @@ public final class SetupActivity extends Activity implements Setup.Listener {
         summary = text("", 15);
         summary.setTypeface(Typeface.DEFAULT_BOLD);
         body.addView(summary);
+        // 진행·경고·안내는 단계가 접혀도 가려지지 않게 맨 위 공통 칸에 둔다(외부 검증 지적: 권한이 생기면 4단계가 접혀
+        // 무선 디버깅 끄기 실패 경고와 다시 끄기 버튼, 다른 단계의 안내까지 숨었다)
+        noticeBox = new LinearLayout(this);
+        noticeBox.setOrientation(LinearLayout.VERTICAL);
+        noticeBox.setPadding(dp(12), dp(6), dp(12), dp(6));
+        GradientDrawable nb = new GradientDrawable();
+        nb.setCornerRadius(dp(10));
+        nb.setStroke(dp(1), ACCENT);
+        noticeBox.setBackground(nb);
+        progress = text("", 14);
+        noticeBox.addView(progress);
+        offButton = button("무선 디버깅 끄기(앱이 끔)", v -> {
+            noteText = null;
+            Setup.start(this, "", -1, number(connectPortField));
+            render();
+        });
+        noticeBox.addView(offButton);
+        body.addView(noticeBox);
 
         // 1. Wi-Fi
         LinearLayout s = step(body, StartSteps.WIFI);
@@ -169,15 +189,7 @@ public final class SetupActivity extends Activity implements Setup.Listener {
         portBox.setVisibility(View.GONE);
         s.addView(portBox);
         s.addView(text("앱이 하는 일: 코드로 폰 자신과 연결 → 인정 목록 끝에 이 앱 줄 하나(기존 줄은 그대로) "
-                + "→ 권한이 생겼는지 확인 → 무선 디버깅 끄기.", 13));
-        progress = text("", 14);
-        s.addView(progress);
-        offButton = button("무선 디버깅 끄기(앱이 끔)", v -> {
-            noteText = null;
-            Setup.start(this, "", -1, number(connectPortField));
-            render();
-        });
-        s.addView(offButton);
+                + "→ 권한이 생겼는지 확인 → 무선 디버깅 끄기. 진행은 맨 위 칸에 보여요.", 13));
 
         // 5. 타일
         s = step(body, StartSteps.TILE);
@@ -194,7 +206,7 @@ public final class SetupActivity extends Activity implements Setup.Listener {
         // 7. 자동 제어
         s = step(body, StartSteps.AUTO);
         s.addView(text("타일을 누르거나 아래 버튼으로 켜요. 켜져 있고 삼성 설정의 네트워크 모드가 '5G 우선'이면 "
-                + "앱이 알아서 지켜봐요. 'LTE 우선'이면 앱은 아무것도 하지 않아요.", 14));
+                + "앱이 알아서 지켜봐요. 'LTE 우선'이면 자동 판단을 쉬어요(앱이 걸어 둔 막음이 남아 있으면 풀어요).", 14));
         autoButton = button("자동 제어 켜기", v -> {
             AppState.setAuto(this, true);
             ControllerService.ensure(this);
@@ -207,9 +219,9 @@ public final class SetupActivity extends Activity implements Setup.Listener {
 
         doneBox = new LinearLayout(this);
         doneBox.setOrientation(LinearLayout.VERTICAL);
-        TextView done = text("다 됐어요 ✓ 이제 평소처럼 쓰시면 돼요.", 16);
-        done.setTypeface(Typeface.DEFAULT_BOLD);
-        doneBox.addView(done);
+        doneTitle = text("", 16);
+        doneTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        doneBox.addView(doneTitle);
         doneBox.addView(button("평소 화면으로", v -> {
             startActivity(new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP));
             finish();
@@ -267,7 +279,11 @@ public final class SetupActivity extends Activity implements Setup.Listener {
     private void render() {
         StartSteps.Facts f = facts(this, pairFind, connectFind);
         StartSteps st = StartSteps.of(f);
-        summary.setText(st.remaining == 0 ? "모든 단계가 끝났어요 ✓" : "남은 단계 " + st.remaining + "개 — ▶ 표시가 지금 할 단계예요");
+        boolean running = Setup.running();
+        String w = running ? null : Setup.warning();
+        summary.setText(running ? "처음 설정 진행 중… (코드 창은 그대로 두세요)"
+                : st.remaining > 0 ? "남은 단계 " + st.remaining + "개 — ▶ 표시가 지금 할 단계예요"
+                : w != null ? "단계는 모두 끝났지만 맨 위 ⚠를 확인해 주세요" : "모든 단계가 끝났어요 ✓");
         for (int i = 0; i < StartSteps.COUNT; i++) {
             String mark = st.done[i] ? "✓" : i == st.current ? "▶" : "○";
             heads[i].setText(mark + " " + (i + 1) + ". " + StartSteps.TITLES[i] + " — " + st.state[i]);
@@ -281,17 +297,22 @@ public final class SetupActivity extends Activity implements Setup.Listener {
         StringBuilder p = new StringBuilder();
         List<String[]> h = Setup.history();
         for (String[] l : h) p.append("1".equals(l[1]) ? "✓ " : "✗ ").append(l[0]).append('\n');
-        if (Setup.running()) p.append("… 진행 중(코드 창은 그대로 두세요)\n");
-        String w = Setup.running() ? null : Setup.warning();
+        if (running) p.append("… 진행 중(코드 창은 그대로 두세요)\n");
         if (w != null) p.append("⚠ ").append(w).append('\n');
         String shown = p.toString().trim();
-        progress.setText(noteText != null ? (shown.isEmpty() ? noteText : noteText + "\n\n" + shown) : shown);
-        connectButton.setEnabled(!Setup.running());
-        offButton.setVisibility(f.privileged && Boolean.TRUE.equals(f.adbWifi) && !Setup.running() ? View.VISIBLE : View.GONE);
+        String all = noteText != null ? (shown.isEmpty() ? noteText : noteText + "\n\n" + shown) : shown;
+        progress.setText(all);
+        boolean offWanted = f.privileged && Boolean.TRUE.equals(f.adbWifi) && !running;
+        offButton.setVisibility(offWanted ? View.VISIBLE : View.GONE);
+        noticeBox.setVisibility(all.isEmpty() && !offWanted ? View.GONE : View.VISIBLE);
+        connectButton.setEnabled(!running);
         autoButton.setVisibility(f.auto ? View.GONE : View.VISIBLE);
         modeLine.setText(st.modeLine);
-        doneBox.setVisibility(st.remaining == 0 ? View.VISIBLE : View.GONE);
-        laterButton.setVisibility(st.remaining == 0 ? View.GONE : View.VISIBLE);
+        boolean allDone = st.remaining == 0 && !running;
+        doneTitle.setText(w == null && !offWanted ? "다 됐어요 ✓ 이제 평소처럼 쓰시면 돼요."
+                : "단계는 끝났어요. 맨 위 ⚠ 안내(무선 디버깅 끄기)를 마저 해 주세요.");
+        doneBox.setVisibility(allDone ? View.VISIBLE : View.GONE);
+        laterButton.setVisibility(allDone ? View.GONE : View.VISIBLE);
     }
 
     /** 단계 머리(누르면 펼치기·접기)와 본문 칸을 만든다. 본문은 지금 할 단계일 때 저절로 펼쳐진다. */

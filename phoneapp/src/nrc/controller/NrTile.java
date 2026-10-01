@@ -25,7 +25,10 @@ public final class NrTile extends TileService {
         AppState.setTileAdded(this, false);
     }
 
-    /** 패널이 타일을 보여 줄 때만 불린다 → 타일이 패널에 있다(이 기능보다 먼저 추가된 타일도 여기서 알아챈다). */
+    /**
+     * 패널에 있는 타일을 칠할 때 불린다(패널을 볼 때, 앱이 갱신을 요청할 때). 어느 쪽이든 타일이 패널에 있을 때만이라
+     * 추가된 것으로 기록한다. 패널을 내린다고 늘 불리는 것은 아니라(활성 타일), 확실한 확인은 '타일 추가' 요청 결과로 한다.
+     */
     @Override
     public void onStartListening() {
         AppState.setTileAdded(this, true);

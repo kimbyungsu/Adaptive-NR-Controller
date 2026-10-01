@@ -54,7 +54,7 @@ final class StartSteps {
         done[CODE] = f.privileged;
         state[CODE] = f.privileged ? "끝남 — 5G/LTE 전환 권한 있음" : f.pairingSeen ? "코드 창이 열려 있어요 — 지금 넣으세요" : "아직";
         done[TILE] = f.tileAdded;
-        state[TILE] = f.tileAdded ? "추가됨" : "아직(이미 있으면 빠른 설정 패널을 한 번 내리면 ✓)";
+        state[TILE] = f.tileAdded ? "추가됨" : "아직(이미 추가했다면 '타일 추가'를 누르면 확인돼요)";
         done[BATTERY] = f.batteryExempt;
         state[BATTERY] = f.batteryExempt ? "빠짐" : "아직";
         done[AUTO] = f.auto;
