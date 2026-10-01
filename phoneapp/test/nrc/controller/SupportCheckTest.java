@@ -43,11 +43,11 @@ public final class SupportCheckTest {
         is(s.known && !s.supported && s.verdict.contains("지원하지 않아요"), "보안 잠금 = 지원 안 함");
         is(s.report.contains("막힘(보안 잠금"), "보고문 잠금 표기");
 
-        // 다른 이유로 실패
+        // 원인 미확인 실패: "안 됨"으로 확정하지 않는다(모름), "보안 잠금은 아님" 단정도 없다
         f = base();
         f.setupResult = SupportCheck.SETUP_BLOCKED_OTHER;
         s = SupportCheck.of(f);
-        is(s.known && !s.supported && s.verdict.contains("보안 잠금은 아님"), "다른 실패");
+        is(!s.known && !s.supported && s.verdict.contains("원인 미확인") && !s.verdict.contains("보안 잠금은 아님"), "원인 미확인 실패 = 모름");
 
         // 삼성 판별
         is(SupportCheck.isSamsung("samsung") && SupportCheck.isSamsung("Samsung") && !SupportCheck.isSamsung("Google"), "삼성 판별");

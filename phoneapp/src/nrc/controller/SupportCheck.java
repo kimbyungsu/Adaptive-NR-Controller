@@ -64,9 +64,10 @@ final class SupportCheck {
             supported = false;
             known = true;
         } else if (SETUP_BLOCKED_OTHER.equals(f.setupResult)) {
-            verdict = "처음 설정이 실패했어요(막힌 이유가 보안 잠금은 아님) — 아래 기록을 보내 주세요";
+            // 원인 미확인 실패: "안 됨"으로 확정하지 않는다(보안 잠금이 아니라고 단정할 근거도 없음, 외부 검증 지적).
+            verdict = "처음 설정이 실패한 적이 있어요(원인 미확인) — 다시 해 보거나 아래 기록을 보내 주세요. 이 폰에서 되는지는 아직 확실치 않아요";
             supported = false;
-            known = true;
+            known = false;
         } else {
             // 아직 안 해 봄: 보안 패치월로 힌트만
             if (isSamsung(f.manufacturer) && patchedEra(f.securityPatch)) {
