@@ -16,11 +16,11 @@ for f in src/nrc/controller/Params.java src/nrc/controller/Policy.java src/nrc/c
          src/nrc/controller/Live.java src/nrc/controller/NowText.java test/nrc/controller/NowTextTest.java \
          test/nrc/controller/PolicyTest.java test/nrc/controller/UseSegmentsTest.java \
          test/nrc/controller/TileTextTest.java test/nrc/controller/CarrierPlanTest.java \
-         test/nrc/controller/ObserveTest.java          src/nrc/controller/Ed25519.java src/nrc/controller/Spake2.java src/nrc/controller/PairCrypto.java          src/nrc/controller/AdbKey.java test/nrc/controller/AdbCryptoTest.java; do
+         test/nrc/controller/ObserveTest.java          src/nrc/controller/Ed25519.java src/nrc/controller/Spake2.java src/nrc/controller/PairCrypto.java          src/nrc/controller/AdbKey.java test/nrc/controller/AdbCryptoTest.java          src/nrc/controller/StartSteps.java test/nrc/controller/StartStepsTest.java; do
   [ -f "$HERE/$f" ] && SRC+=("$(to_arg "$HERE/$f")")
 done
 "$JDK/bin/javac$EXE" -encoding UTF-8 -d "$(to_arg "$OUT")" "${SRC[@]}"
-for t in UseSegmentsTest PolicyTest TileTextTest CarrierPlanTest ObserveTest NowTextTest AdbCryptoTest; do
+for t in UseSegmentsTest PolicyTest TileTextTest CarrierPlanTest ObserveTest NowTextTest AdbCryptoTest StartStepsTest; do
   [ -f "$HERE/test/nrc/controller/$t.java" ] || continue
   echo "== $t"
   "$JDK/bin/java$EXE" -Dsun.stdout.encoding=UTF-8 -Dstdout.encoding=UTF-8 -cp "$(to_arg "$OUT")" "nrc.controller.$t" | tail -2

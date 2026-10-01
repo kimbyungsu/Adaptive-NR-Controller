@@ -38,7 +38,7 @@
         <activity
             android:name=".SetupActivity"
             android:exported="false"
-            android:label="처음 설정"
+            android:label="시작하기"
             android:resizeableActivity="true" />
         <service
             android:name=".ControllerService"

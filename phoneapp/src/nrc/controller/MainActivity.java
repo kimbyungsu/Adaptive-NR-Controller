@@ -2,13 +2,10 @@ package nrc.controller;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.StatusBarManager;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
-import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -21,7 +18,9 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.view.View;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -103,6 +102,12 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
         show(TAB_NOW);
+        if (!AppState.startShown(this)) {
+            AppState.markStartShown(this);
+            if (StartSteps.of(SetupActivity.facts(this, null, null)).remaining > 0) {
+                startActivity(new Intent(this, SetupActivity.class));
+            }
+        }
     }
 
     @Override
@@ -156,12 +161,24 @@ public final class MainActivity extends Activity implements SharedPreferences.On
     private void buildHelp() {
         WebView w = new WebView(this);
         w.getSettings().setJavaScriptEnabled(false);
+        w.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
+                if ("nrc".equals(req.getUrl().getScheme()) && "start".equals(req.getUrl().getHost())) {
+                    startActivity(new Intent(MainActivity.this, SetupActivity.class));
+                    return true;
+                }
+                return false; // 문서 안 이동(#절)만 허용
+            }
+        });
         w.loadUrl("file:///android_asset/help.html");
         body.addView(w, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
     }
 
     private void buildNow() {
+        setupButton = button("", v -> startActivity(new Intent(this, SetupActivity.class)));
+        body.addView(setupButton);
         headline = text("", 22);
         headline.setTypeface(Typeface.DEFAULT_BOLD);
         body.addView(headline);
@@ -170,8 +187,6 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         nowNext = text("", 15);
         nowNext.setTypeface(Typeface.DEFAULT_BOLD);
         body.addView(nowNext);
-        setupButton = button("처음 설정하기(PC 없이)", v -> startActivity(new Intent(this, SetupActivity.class)));
-        body.addView(setupButton);
         liftButton = button("남은 5G 막음 풀기", v -> confirmLiftExternal());
         body.addView(liftButton);
         liftOut = text("", 14);
@@ -213,7 +228,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
             render();
         });
         body.addView(autoButton);
-        body.addView(button("처음 설정(PC 없이)", v -> startActivity(new Intent(this, SetupActivity.class))));
+        body.addView(button("시작하기 다시 보기(처음 설정·마무리)", v -> startActivity(new Intent(this, SetupActivity.class))));
         body.addView(button("빠른 설정 패널에 '5G 자동' 타일 추가", v -> requestTile()));
         body.addView(button("배터리 최적화에서 빼기(오래 살아 있게)", v -> requestBatteryExemption()));
         body.addView(button("이 앱 알림 설정 열기", v -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
@@ -255,7 +270,9 @@ public final class MainActivity extends Activity implements SharedPreferences.On
                 && CarrierPlan.classify(r.read(Radio.CARRIER), own) == CarrierPlan.Carrier.EXTERNAL;
         NowText t = NowText.of(l, AppState.tile(this), SystemClock.elapsedRealtime(), leftover, external);
         liftButton.setVisibility(external ? View.VISIBLE : View.GONE);
-        setupButton.setVisibility(r != null && !r.privileged() ? View.VISIBLE : View.GONE);
+        int left = StartSteps.of(SetupActivity.facts(this, null, null)).remaining;
+        setupButton.setText("시작하기 — " + left + "단계 남음(눌러서 이어 하기)");
+        setupButton.setVisibility(left > 0 ? View.VISIBLE : View.GONE);
         headline.setText(t.headline);
         StringBuilder sb = new StringBuilder();
         for (String s : t.lines) sb.append("· ").append(s).append('\n');
@@ -473,32 +490,9 @@ public final class MainActivity extends Activity implements SharedPreferences.On
 
     /** 사용자에게 타일 추가를 묻는 시스템 창을 띄운다(안드로이드 13+ 공식 방법, 추가 여부는 사용자가 정한다). */
     private void requestTile() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            // 안드로이드 12에는 추가 요청 창이 없다
-            settingsStatus.setText("이 폰에서는 추가 창을 띄울 수 없습니다. 빠른 설정 패널의 편집(연필) 버튼에서 '5G 자동'을 끌어다 놓아 주세요.");
-            return;
-        }
-        StatusBarManager sbm = getSystemService(StatusBarManager.class);
-        sbm.requestAddTileService(new ComponentName(this, NrTile.class), TileText.LABEL,
-                Icon.createWithResource(this, R.drawable.nrc_tile), getMainExecutor(), result -> {
-                    String msg;
-                    switch (result) {
-                        case StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED:
-                            msg = "타일을 추가했습니다.";
-                            break;
-                        case StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED:
-                            msg = "타일이 이미 있습니다.";
-                            break;
-                        case StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_NOT_ADDED:
-                            msg = "추가하지 않았습니다.";
-                            break;
-                        default:
-                            msg = "이 폰에서는 추가 창을 띄울 수 없습니다(코드 " + result
-                                    + "). 빠른 설정 패널의 편집(연필) 버튼에서 '5G 자동'을 끌어다 놓아 주세요.";
-                    }
-                    AppState.refreshTile(this);
-                    if (settingsStatus != null) settingsStatus.setText(msg);
-                });
+        NrTile.requestAdd(this, msg -> {
+            if (settingsStatus != null) settingsStatus.setText(msg);
+        });
     }
 
     // ================================================================ 작은 도구

@@ -15,11 +15,20 @@ public final class NrTile extends TileService {
      */
     @Override
     public void onTileAdded() {
+        AppState.setTileAdded(this, true);
         show();
     }
 
+    /** 패널에서 빠졌다(시작하기 체크리스트의 타일 단계를 다시 "아직"으로). */
+    @Override
+    public void onTileRemoved() {
+        AppState.setTileAdded(this, false);
+    }
+
+    /** 패널이 타일을 보여 줄 때만 불린다 → 타일이 패널에 있다(이 기능보다 먼저 추가된 타일도 여기서 알아챈다). */
     @Override
     public void onStartListening() {
+        AppState.setTileAdded(this, true);
         show();
     }
 
@@ -43,6 +52,40 @@ public final class NrTile extends TileService {
         t.setState(s.look == TileText.Look.ACTIVE ? Tile.STATE_ACTIVE
                 : s.look == TileText.Look.INACTIVE ? Tile.STATE_INACTIVE : Tile.STATE_UNAVAILABLE);
         t.updateTile();
+    }
+
+    /**
+     * 사용자에게 타일 추가를 묻는 시스템 창(안드로이드 13+ 공식 방법, 추가 여부는 사용자가 정한다). 결과 글을 done에 준다.
+     * 안드로이드 12에는 이 창이 없어 패널 편집 안내만 준다.
+     */
+    static void requestAdd(android.app.Activity a, java.util.function.Consumer<String> done) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU) {
+            done.accept("이 폰에서는 추가 창을 띄울 수 없어요. 빠른 설정 패널의 편집(연필) 버튼에서 '5G 자동'을 끌어다 놓아 주세요.");
+            return;
+        }
+        android.app.StatusBarManager sbm = a.getSystemService(android.app.StatusBarManager.class);
+        sbm.requestAddTileService(new android.content.ComponentName(a, NrTile.class), TileText.LABEL,
+                android.graphics.drawable.Icon.createWithResource(a, R.drawable.nrc_tile), a.getMainExecutor(), result -> {
+                    String msg;
+                    switch (result) {
+                        case android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED:
+                            AppState.setTileAdded(a, true);
+                            msg = "타일을 추가했어요.";
+                            break;
+                        case android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED:
+                            AppState.setTileAdded(a, true);
+                            msg = "타일이 이미 있어요.";
+                            break;
+                        case android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_NOT_ADDED:
+                            msg = "추가하지 않았어요.";
+                            break;
+                        default:
+                            msg = "이 폰에서는 추가 창을 띄울 수 없어요(코드 " + result
+                                    + "). 빠른 설정 패널의 편집(연필) 버튼에서 '5G 자동'을 끌어다 놓아 주세요.";
+                    }
+                    AppState.refreshTile(a);
+                    done.accept(msg);
+                });
     }
 
     /** 타일을 길게 눌렀을 때 시스템이 여는 화면과 같은 곳. */

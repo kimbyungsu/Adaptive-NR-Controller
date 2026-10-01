@@ -20,6 +20,10 @@ final class AppState {
     static final String ENGINE = "engine";
     /** 서비스가 뜨거나 내려간 횟수. 값 자체는 쓰지 않고, 바뀌었다는 신호로 화면(저장소 구독)을 다시 그리게 한다. */
     static final String ALIVE_SEQ = "aliveSeq";
+    /** 빠른 설정 패널에 타일이 있는지(타일이 추가·표시·제거될 때 타일 서비스가 쓴다, 시작하기 체크리스트용). */
+    static final String TILE_ADDED = "tileAdded";
+    /** 시작하기 화면을 한 번 자동으로 띄웠는지(첫 실행 때만 자동). */
+    static final String START_SHOWN = "startShown";
 
     private AppState() {
     }
@@ -37,6 +41,22 @@ final class AppState {
         return TileText.of(p.getBoolean(AUTO, true), p.getString(PROBLEM, null), p.getInt(MODE, TileText.MODE_UNKNOWN),
                 p.getBoolean(WIFI, false), p.getString(PHASE, null), ControllerService.running,
                 ControllerService.running && p.getBoolean(ENGINE, false));
+    }
+
+    static boolean tileAdded(Context c) {
+        return prefs(c).getBoolean(TILE_ADDED, false);
+    }
+
+    static void setTileAdded(Context c, boolean added) {
+        if (prefs(c).getBoolean(TILE_ADDED, false) != added) prefs(c).edit().putBoolean(TILE_ADDED, added).apply();
+    }
+
+    static boolean startShown(Context c) {
+        return prefs(c).getBoolean(START_SHOWN, false);
+    }
+
+    static void markStartShown(Context c) {
+        prefs(c).edit().putBoolean(START_SHOWN, true).apply();
     }
 
     static void setAuto(Context c, boolean on) {
