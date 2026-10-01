@@ -144,6 +144,7 @@ final class Setup {
         }
         j.write("setup_start", "sub", r.sub, "priv", r.privileged(), "probe", probe);
         if (r.privileged() && !probe) {
+            AppState.setSetupResult(c, SupportCheck.SETUP_WORKS);
             emit("이미 5G/LTE 전환 권한이 있어요 — 목록은 건드리지 않아요", true);
             // 지난 설정에서 무선 디버깅 끄기가 안 됐으면 여기서 다시 끈다(코드 없이, 페어링된 열쇠로)
             if (Boolean.TRUE.equals(adbWifiOn(c)) && AdbKey.exists(keyDir(c))) {
@@ -206,15 +207,27 @@ final class Setup {
         }
         String result = lastLine(out, "RESULT ");
         j.write("setup_add", "result", result, "before", lastLine(out, "BEFORE "), "after", lastLine(out, "AFTER "), "entry", entry);
+        // 이 폰에서 되는지 판정을 남긴다(점검 화면·보내기용). shell 차단(보안 잠금)은 다른 실패와 구분한다.
+        if (!probe && result != null && !"ok".equals(result) && !"already".equals(result)) {
+            boolean blockedByShell = result.contains("cannot be invoked by shell")
+                    || (result.contains("SecurityException") && result.contains("shell"));
+            AppState.setSetupResult(c, blockedByShell ? SupportCheck.SETUP_BLOCKED_PATCH : SupportCheck.SETUP_BLOCKED_OTHER);
+            if (blockedByShell) {
+                emit("이 폰은 보안 업데이트로 이 방식이 막혀 있어요(지원 안 함) — 아무것도 바꾸지 않았어요", false);
+                return false;
+            }
+        }
         if (probe) {
             boolean read = "already".equals(result) || "absent".equals(result);
             emit(read ? "시험: shell 권한으로 목록을 읽었어요(앱 줄 " + ("already".equals(result) ? "있음" : "없음") + ", 바꾸지 않음)"
                     : "시험: 목록을 읽지 못했어요(" + result + ")", read);
             if (!read) return false;
         } else if ("ok".equals(result)) {
+            AppState.setSetupResult(c, SupportCheck.SETUP_WORKS);
             emit("앱: 폰이 인정하는 목록 끝에 이 앱 줄을 덧붙였어요(기존 줄은 그대로)", true);
             ControllerService.timeline(c).add(Timeline.Cat.ACT, "처음 설정: 폰이 인정하는 목록에 이 앱 줄을 덧붙임(무선 디버깅)");
         } else if ("already".equals(result)) {
+            AppState.setSetupResult(c, SupportCheck.SETUP_WORKS);
             emit("앱 줄은 이미 목록에 있어요", true);
         } else if ("fail not_ready".equals(result)) {
             emit("폰이 통신사 설정을 아직 다 읽지 않아서 목록을 건드리지 않았어요 — 잠시 뒤 다시 해 주세요", false);

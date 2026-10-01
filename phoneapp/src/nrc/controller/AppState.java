@@ -24,6 +24,8 @@ final class AppState {
     static final String TILE_ADDED = "tileAdded";
     /** 시작하기 화면을 한 번 자동으로 띄웠는지(첫 실행 때만 자동). */
     static final String START_SHOWN = "startShown";
+    /** 처음 설정이 이 폰에서 어떻게 끝났는지(SupportCheck.SETUP_*). 점검 화면이 읽는다. */
+    static final String SETUP_RESULT = "setupResult";
 
     private AppState() {
     }
@@ -53,6 +55,14 @@ final class AppState {
 
     static boolean startShown(Context c) {
         return prefs(c).getBoolean(START_SHOWN, false);
+    }
+
+    static String setupResult(Context c) {
+        return prefs(c).getString(SETUP_RESULT, SupportCheck.SETUP_UNKNOWN);
+    }
+
+    static void setSetupResult(Context c, String r) {
+        prefs(c).edit().putString(SETUP_RESULT, r).apply();
     }
 
     static void markStartShown(Context c) {

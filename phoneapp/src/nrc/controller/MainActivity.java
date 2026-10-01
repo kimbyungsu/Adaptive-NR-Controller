@@ -229,6 +229,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         });
         body.addView(autoButton);
         body.addView(button("시작하기 다시 보기(처음 설정·마무리)", v -> startActivity(new Intent(this, SetupActivity.class))));
+        body.addView(button("이 폰에서 되는지 점검·결과 보내기", v -> showSupportReport()));
         body.addView(button("빠른 설정 패널에 '5G 자동' 타일 추가", v -> requestTile()));
         body.addView(button("배터리 최적화에서 빼기(오래 살아 있게)", v -> requestBatteryExemption()));
         body.addView(button("이 앱 알림 설정 열기", v -> startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
@@ -489,6 +490,70 @@ public final class MainActivity extends Activity implements SharedPreferences.On
     }
 
     /** 사용자에게 타일 추가를 묻는 시스템 창을 띄운다(안드로이드 13+ 공식 방법, 추가 여부는 사용자가 정한다). */
+    /** 이 폰에서 되는지 점검 결과를 한 화면에 모아 보여 주고, [복사]로 보낼 수 있게 한다(개인정보 없음). */
+    private void showSupportReport() {
+        SupportCheck.Info f = new SupportCheck.Info();
+        try {
+            f.appVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception ignored) {
+            // 버전 못 읽으면 모름
+        }
+        f.manufacturer = Build.MANUFACTURER;
+        f.model = Build.MODEL;
+        f.device = Build.DEVICE;
+        f.androidRelease = Build.VERSION.RELEASE;
+        f.sdk = Build.VERSION.SDK_INT;
+        f.securityPatch = Build.VERSION.SECURITY_PATCH;
+        f.oneUi = oneUiVersion();
+        f.setupResult = AppState.setupResult(this);
+        Radio r = Radio.open(this);
+        f.privileged = r != null && r.privileged();
+        f.simCount = r == null ? -1 : r.activeSims();
+        android.telephony.TelephonyManager tm = getSystemService(android.telephony.TelephonyManager.class);
+        if (tm != null) {
+            String op = tm.getSimOperatorName();
+            if (op == null || op.isEmpty()) op = tm.getNetworkOperatorName();
+            f.carrier = op;
+            // 허용망 비트마스크 방식 지원 여부는 공개 상수가 없어 넣지 않는다(보고문에 "모름")
+        }
+        SupportCheck sc = SupportCheck.of(f);
+        TextView tv = text(sc.report, 13);
+        tv.setTextIsSelectable(true);
+        tv.setPadding(dp(16), dp(8), dp(16), dp(8));
+        ScrollView sv = new ScrollView(this);
+        sv.addView(tv);
+        new AlertDialog.Builder(this)
+                .setTitle(sc.known ? (sc.supported ? "이 폰: 됩니다 ✓" : "이 폰: 안 됩니다") : "이 폰: 아직 모름")
+                .setView(sv)
+                .setPositiveButton("복사", (dlg, w) -> {
+                    android.content.ClipboardManager cm = getSystemService(android.content.ClipboardManager.class);
+                    if (cm != null) {
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("5G 자동 제어 점검", sc.report));
+                        if (settingsStatus != null) settingsStatus.setText("점검 결과를 복사했어요. 붙여넣어 보내 주세요(개인정보 없음).");
+                    }
+                })
+                .setNegativeButton("닫기", null)
+                .show();
+    }
+
+    /** 삼성 One UI 버전(ro.build.version.oneui, 있으면 "6.1"처럼; 못 읽으면 null). */
+    private static String oneUiVersion() {
+        try {
+            @SuppressWarnings("unchecked")
+            Class<?> sp = Class.forName("android.os.SystemProperties");
+            String raw = (String) sp.getMethod("get", String.class).invoke(null, "ro.build.version.oneui");
+            if (raw == null || raw.isEmpty()) return null;
+            int v = Integer.parseInt(raw.trim());
+            // 삼성 표기: 60101 → 6.1.1, 60000 → 6.0
+            int major = v / 10000, minor = (v / 100) % 100, patch = v % 100;
+            StringBuilder b = new StringBuilder().append(major).append('.').append(minor);
+            if (patch != 0) b.append('.').append(patch);
+            return b.toString();
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     private void requestTile() {
         NrTile.requestAdd(this, msg -> {
             if (settingsStatus != null) settingsStatus.setText(msg);
