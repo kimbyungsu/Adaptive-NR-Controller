@@ -20,8 +20,23 @@ JDK="$(to_exe "${JAVA_HOME:?JAVA_HOME not set}")"
 SDK="$(to_exe "${ANDROID_HOME:?ANDROID_HOME not set}")"
 BT="$SDK/build-tools/${BUILD_TOOLS:-37.0.0}"
 JAR="$(to_arg "$SDK/platforms/android-33/android.jar")"
-KS="$HERE/../app/build/debug.keystore"
-[ -f "$KS" ] || { echo "no keystore: run bash app/build.sh first" >&2; exit 1; }
+# 서명 키: 기본은 개발 키(app/build/debug.keystore). 배포 키로 서명하려면 환경변수로 고른다(기본 동작은 그대로):
+#   RELEASE_KEYSTORE=<경로> RELEASE_ALIAS=<별칭> RELEASE_STOREPASS=<암호> [RELEASE_KEYPASS=<키암호>] bash phoneapp/build.sh
+# 배포 키는 저장소 밖에 둔다(.gitignore의 *.jks/*.keystore). 키를 바꾸면 인증서 해시가 달라져 폰 재등록이 필요하다.
+if [ -n "${RELEASE_KEYSTORE:-}" ]; then
+  KS="$RELEASE_KEYSTORE"
+  KS_ALIAS="${RELEASE_ALIAS:?RELEASE_ALIAS not set}"
+  KS_STOREPASS="${RELEASE_STOREPASS:?RELEASE_STOREPASS not set}"
+  KS_KEYPASS="${RELEASE_KEYPASS:-$KS_STOREPASS}"
+  SIGN_KIND="release"
+else
+  KS="$HERE/../app/build/debug.keystore"
+  KS_ALIAS="nrcdebug"
+  KS_STOREPASS="android"
+  KS_KEYPASS="android"
+  SIGN_KIND="debug"
+fi
+[ -f "$KS" ] || { echo "no keystore: $KS (개발 키는 bash app/build.sh 먼저)" >&2; exit 1; }
 OUT="$HERE/build"
 mkdir -p "$OUT"
 WORK="$(mktemp -d)"
@@ -46,8 +61,8 @@ while IFS= read -r f; do CLS+=("$(to_arg "$f")"); done < <(find "$WORK/classes" 
   --output "$W/dex" "${CLS[@]}"
 (cd "$WORK/dex" && "$JDK/bin/jar$EXE" uf "$W/unsigned.apk" classes.dex)
 "$BT/zipalign$EXE" -f 4 "$W/unsigned.apk" "$W/aligned.apk"
-"$JDK/bin/java$EXE" -jar "$(to_arg "$BT/lib/apksigner.jar")" sign --ks "$(to_arg "$KS")" --ks-pass pass:android \
-  --ks-key-alias nrcdebug --out "$W/signed.apk" "$W/aligned.apk"
+"$JDK/bin/java$EXE" -jar "$(to_arg "$BT/lib/apksigner.jar")" sign --ks "$(to_arg "$KS")" --ks-pass "pass:$KS_STOREPASS" \
+  --key-pass "pass:$KS_KEYPASS" --ks-key-alias "$KS_ALIAS" --out "$W/signed.apk" "$W/aligned.apk"
 cp "$WORK/signed.apk" "$OUT/nrc-controller.apk"
-echo "built: $OUT/nrc-controller.apk"
+echo "built: $OUT/nrc-controller.apk (sign=$SIGN_KIND)"
 "$JDK/bin/java$EXE" -jar "$(to_arg "$BT/lib/apksigner.jar")" verify --print-certs "$(to_arg "$OUT/nrc-controller.apk")" | grep -i "SHA-256"

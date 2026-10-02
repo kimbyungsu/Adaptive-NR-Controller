@@ -8,6 +8,7 @@
 ## 0-1. 2026-10-01 현재: 제품 앱 "5G 자동 제어"(개발 중)
 
 - 설치 파일: `phoneapp/build/nrc-controller.apk`(빌드: `bash phoneapp/build.sh`, PC 시험: `bash phoneapp/test.sh`). 폰의 앱 이름 "5G 자동 제어". PC에 따로 설치할 것은 없다(개발용 도구만 PC에 있다).
+- 서명 키: 기본은 개발 키(app/build/debug.keystore, 인증서 SHA-256 `2186eadb…`). **배포 키**(2026-10-02 생성, 저장소 밖 `D:\프로그래밍\nrc-release-key\`, 인증서 SHA-256 `07183a8e…4c0e6e42`)로 서명하려면 `RELEASE_KEYSTORE=<경로> RELEASE_ALIAS=nrcrelease RELEASE_STOREPASS=<암호> bash phoneapp/build.sh`. 아직 폰은 개발 키 등록 그대로다(배포 키로 전환하면 인증서가 달라져 재설치·재등록이 필요). 키/암호 상세는 메모리 release-key.
 - 동작 조건: 폰이 이 앱을 "5G/LTE를 바꿀 수 있는 앱"으로 인정해야 한다(폰이 인정하는 목록에 이 앱 줄 하나). 이 등록이 "처음 설정"이고, 앱 안에서 PC 없이 한다(폰 자체 무선 디버깅). 원리는 앱 [도움말] 맨 위 "처음 설정은 왜 필요한가"(같은 원본 `phoneapp/assets/help.html`).
 - 쓰는 법(사용자): 앱을 처음 열면 [시작하기] 체크리스트가 뜬다. 끝난 단계는 앱이 폰을 읽어 ✓로 바꾸고, 지금 할 단계만 펼쳐 보인다.
   1. Wi-Fi에 연결(인터넷이 안 되는 Wi-Fi도 됨, 핫스팟만 켠 상태·모바일 데이터로는 다음 단계가 안 됨)
