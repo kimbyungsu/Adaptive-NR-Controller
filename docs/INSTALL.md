@@ -141,7 +141,9 @@ python pc/nrctl.py restore
 **지금 폰에 남아 있는 시험 상태(레퍼런스 기기, 2026-10-03 갱신)와 되돌리는 법(PC, USB 디버깅)**
 - 2026-10-03 정리: 옛 시험 앱 `nrc.poc`·`nrc.companion`을 `adb uninstall`로 지웠다. 지우기 전에 허용 타입 네 사유(USER·POWER·CARRIER·ENABLE_2G)를 읽어 모두 5G 포함임을 확인했다(남은 5G 막음 없음). `nrc.poc`의 배터리 최적화 제외 항목은 삭제와 함께 빠졌다. 제품 앱은 그대로(권한·배터리 최적화 제외·실행 유지, 사유 값·설정 화면 값 변화 없음).
 - 제품 앱 `nrc.controller`(09-30 개발 시험용, 인정 목록 3번째 줄 `2186eadb…:nrc.controller`): `adb uninstall nrc.controller`. 목록에서 이 줄만 빼려면 `clear 2 true`로 비운 뒤 남길 줄을 `add 2 true <줄>`로 다시 넣는다.
-- 인정 목록에 **`2186eadb…:nrc.poc` 줄은 남아 있다**(앱만 지움). 이 줄은 이름이 `nrc.poc`이고 개발 키(이 PC에만 있음)로 서명된 앱에만 맞는다. 줄 하나만 빼는 도구가 없어 빼려면 목록을 비운 뒤 다시 넣어야 하고, 그 사이 제품 앱 권한도 잠깐 풀린다.
+- 인정 목록에 **`2186eadb…:nrc.poc` 줄은 남아 있다**(앱만 지움). 이 줄은 패키지 이름 `nrc.poc`와 개발 키 인증서가 **함께** 맞는 앱에만 권한을 준다.
+  - **앱 삭제는 권한 회수가 아니다.** 이미 서명된 시험 APK(PC의 `poc/carrier/build/nrc-poc.apk`, 저장소 밖)를 다시 설치하면 개인키 없이도 등록 절차 없이 권한이 곧바로 다시 생긴다(09-29 23:19:35 재설치 실측, research §2.15).
+  - 이번에 남긴 이유: 지금 있는 도구에는 줄 하나만 빼는 명령이 없다(`SetupTool`은 has/add, `CcTool`은 get/add/clear). 기존 명령으로 clear 후 재추가하면 그 사이 제품 앱 권한도 풀리므로 하지 않았다. 해당 줄만 뺀 목록을 한 번에 넘기는 선택 제거는 가능하지만(이 키의 배열은 통째로 바뀜), 별도 도구와 검증이 필요하다.
 - 통신사 설정 덧붙임(영구) 전체 되돌리기: `adb shell 'CLASSPATH=/data/local/tmp/nrc/cctool.dex app_process /system/bin nrc.CcTool clear 2 true'`. 설치 전에는 다른 덧붙임이 없었으므로 이것으로 원래 목록 `[59DFFFDDCCC1929A5C089E53B05A27A42F6517B1]`으로 돌아간다(제품 앱 권한도 함께 풀림). `get 2`로 확인한다.
   - `cctool.dex`는 스크래치패드 도구다. 제품 설치 프로그램에 같은 기능을 넣을 예정이다.
 
