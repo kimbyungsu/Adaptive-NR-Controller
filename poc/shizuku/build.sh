@@ -57,6 +57,7 @@ W="$(to_arg "$WORK")"
 # R.java 불필요(res 없음). manifest만 링크.
 "$BT/aapt2$EXE" link -o "$W/unsigned.apk" -I "$JAR" --manifest "$W/AndroidManifest.xml" --min-sdk-version 29
 
+# AIDL 도구는 한글 경로를 못 열어, UserService 인터페이스(INrObserver)는 생성 코드를 src/에 직접 작성해 둔다.
 SRC=()
 while IFS= read -r f; do SRC+=("$(to_arg "$f")"); done < <(find "$HERE/src" -name '*.java')
 "$JDK/bin/javac$EXE" -source 8 -target 8 -encoding UTF-8 -Xlint:-options \

@@ -91,6 +91,11 @@ public final class Main extends Activity {
         test.setOnClickListener(this::onTest);
         col.addView(test);
 
+        Button bind = new Button(this);
+        bind.setText("관측 프로세스 연결 시험 (bindUserService)");
+        bind.setOnClickListener(v -> bindObserver());
+        col.addView(bind);
+
         tv = new TextView(this);
         tv.setTextIsSelectable(true);
         col.addView(tv);
@@ -111,6 +116,7 @@ public final class Main extends Activity {
         Shizuku.removeBinderReceivedListener(recvL);
         Shizuku.removeBinderDeadListener(deadL);
         Shizuku.removeRequestPermissionResultListener(permL);
+        unbindObserver();
     }
 
     private void log(String s) {
@@ -169,6 +175,67 @@ public final class Main extends Activity {
             log("\n읽기 성공 = Shizuku 통로로 전화 설정을 '통신사 권한 없이' 읽었다는 뜻.");
         } catch (Throwable t) {
             log("읽기 실패: " + unwrap(t));
+        }
+    }
+
+    // ---- Step 1: 관측 프로세스(bindUserService) 연결 시험 ----
+
+    private Shizuku.UserServiceArgs obsArgs; // bind/unbind가 같은 인스턴스를 쓰도록 1회 생성(onCreate)
+    private final AtomicBoolean obsBound = new AtomicBoolean(false);
+
+    private Shizuku.UserServiceArgs obsArgs() {
+        if (obsArgs == null) {
+            obsArgs = new Shizuku.UserServiceArgs(
+                    new android.content.ComponentName(getPackageName(), NrObserverService.class.getName()))
+                    .daemon(false).processNameSuffix("obs").debuggable(false).version(1).tag("nrobs");
+        }
+        return obsArgs;
+    }
+
+    private final android.content.ServiceConnection obsConn = new android.content.ServiceConnection() {
+        @Override
+        public void onServiceConnected(android.content.ComponentName n, IBinder binder) {
+            EXEC.submit(() -> {
+                try {
+                    if (binder == null || !binder.pingBinder()) {
+                        log("관측 프로세스 binder가 비었거나 죽었어요.");
+                        return;
+                    }
+                    INrObserver obs = INrObserver.Stub.asInterface(binder);
+                    log("관측 프로세스 연결됨 → snapshot: " + obs.snapshot());
+                    log("= Shizuku가 우리 코드를 shell 프로세스로 띄워 그 안에서 값을 받아왔다는 뜻(방향 A의 토대).");
+                } catch (Throwable t) {
+                    log("snapshot 실패: " + unwrap(t));
+                }
+            });
+        }
+
+        @Override
+        public void onServiceDisconnected(android.content.ComponentName n) {
+            runOnUiThread(() -> log("관측 프로세스 연결 끊김."));
+        }
+    };
+
+    private void bindObserver() {
+        if (!Shizuku.pingBinder() || Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+            refresh();
+            return;
+        }
+        head("Shizuku가 우리 '관측 프로세스'를 shell 신분으로 띄우도록 요청해요(bindUserService)…");
+        try {
+            Shizuku.bindUserService(obsArgs(), obsConn);
+            obsBound.set(true);
+        } catch (Throwable t) {
+            log("bindUserService 실패: " + unwrap(t));
+        }
+    }
+
+    /** Activity 종료 시 관측 프로세스 연결을 해제(연결 캐시·콜백 누수 방지). daemon(false)라 remove=true. */
+    private void unbindObserver() {
+        if (!obsBound.getAndSet(false)) return;
+        try {
+            Shizuku.unbindUserService(obsArgs(), obsConn, true);
+        } catch (Throwable ignored) {
         }
     }
 
