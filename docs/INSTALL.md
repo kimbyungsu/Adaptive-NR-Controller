@@ -43,7 +43,7 @@
 |---|---|---|---|
 | ① PC 도구 `nrctl` | PC: `D:\프로그래밍\[LTE-5G] Adaptive NR Controller\pc\nrctl.py` | 폰에 ②를 넣고 켜고 끈다. 상태를 보고, 기록을 가져와 요약한다. **리모컨** 역할 | PC 명령창에서만 |
 | ② 폰 프로그램(컨트롤러 본체) | 만들어진 파일: PC `daemon\build\nrd.dex`. 폰에 들어가는 곳: `/data/local/tmp/nrc/` | 5G가 불안정한지 판단하고 LTE로 쉬게 했다가 다시 5G를 시험한다. **실제 일을 하는 부분** | 안 보인다(앱 목록에 없음). 작동 중이면 상단바에 작은 점만 보인다 |
-| ③ 동반 앱 `nrc.companion` | 폰에 설치된 앱(화면·버튼 없음) | 상단바 작은 점 그림만 담고 있다 | 설정 > 애플리케이션 목록에만 보인다 |
+| ③ 동반 앱 `nrc.companion` | 폰에 설치된 앱(화면·버튼 없음). 2026-10-03 레퍼런스 폰에서 지움 | 상단바 작은 점 그림만 담고 있다 | 설정 > 애플리케이션 목록에만 보인다 |
 
 폰 안 `/data/local/tmp/nrc/` 폴더에 생기는 파일:
 - `nrd.dex`: 컨트롤러 프로그램
@@ -138,11 +138,11 @@ python pc/nrctl.py restore
 - 한계: SIM·eSIM 교체, 공장 초기화, 전화 앱 데이터 삭제, 삼성 업데이트(OTA), 안드로이드 버전 변경이 있으면 자격이 풀릴 수 있다. 그때는 PC로 다시 설치한다.
 - 앱은 오래 살아 있기 위해 상주 서비스로 돈다. 배터리 최적화에서 빼야 한다. 설치 프로그램이 해 준다.
 
-**지금 폰에 남아 있는 시험 상태(레퍼런스 기기, 09-29 밤)와 되돌리는 법(PC, USB 디버깅)**
+**지금 폰에 남아 있는 시험 상태(레퍼런스 기기, 2026-10-03 갱신)와 되돌리는 법(PC, USB 디버깅)**
+- 2026-10-03 정리: 옛 시험 앱 `nrc.poc`·`nrc.companion`을 `adb uninstall`로 지웠다. 지우기 전에 허용 타입 네 사유(USER·POWER·CARRIER·ENABLE_2G)를 읽어 모두 5G 포함임을 확인했다(남은 5G 막음 없음). `nrc.poc`의 배터리 최적화 제외 항목은 삭제와 함께 빠졌다. 제품 앱은 그대로(권한·배터리 최적화 제외·실행 유지, 사유 값·설정 화면 값 변화 없음).
 - 제품 앱 `nrc.controller`(09-30 개발 시험용, 인정 목록 3번째 줄 `2186eadb…:nrc.controller`): `adb uninstall nrc.controller`. 목록에서 이 줄만 빼려면 `clear 2 true`로 비운 뒤 남길 줄을 `add 2 true <줄>`로 다시 넣는다.
-- 시험 앱 `nrc.poc`: `adb uninstall nrc.poc`
-- 배터리 최적화 제외: `adb shell cmd deviceidle whitelist -nrc.poc`
-- 통신사 설정 덧붙임(영구): `adb shell 'CLASSPATH=/data/local/tmp/nrc/cctool.dex app_process /system/bin nrc.CcTool clear 2 true'`. 설치 전에는 다른 덧붙임이 없었으므로 이것으로 원래 목록 `[59DFFFDDCCC1929A5C089E53B05A27A42F6517B1]`으로 돌아간다. `get 2`로 확인한다.
+- 인정 목록에 **`2186eadb…:nrc.poc` 줄은 남아 있다**(앱만 지움). 이 줄은 이름이 `nrc.poc`이고 개발 키(이 PC에만 있음)로 서명된 앱에만 맞는다. 줄 하나만 빼는 도구가 없어 빼려면 목록을 비운 뒤 다시 넣어야 하고, 그 사이 제품 앱 권한도 잠깐 풀린다.
+- 통신사 설정 덧붙임(영구) 전체 되돌리기: `adb shell 'CLASSPATH=/data/local/tmp/nrc/cctool.dex app_process /system/bin nrc.CcTool clear 2 true'`. 설치 전에는 다른 덧붙임이 없었으므로 이것으로 원래 목록 `[59DFFFDDCCC1929A5C089E53B05A27A42F6517B1]`으로 돌아간다(제품 앱 권한도 함께 풀림). `get 2`로 확인한다.
   - `cctool.dex`는 스크래치패드 도구다. 제품 설치 프로그램에 같은 기능을 넣을 예정이다.
 
 **A~D(09-28에 정리한 후보)**
