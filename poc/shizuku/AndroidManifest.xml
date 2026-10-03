@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shizuku 경로 PoC(DESIGN §5.15·§5.16, 2026-10-03). 제품 코드 아님. 통신사 권한 방식(poc/carrier)과 별개.
+  목적(현재): 통신사 권한이 없어도 사용자가 설치·동의한 Shizuku를 통해 앱이 전화 설정(허용 망 사유별 값)을
+        '읽을' 수 있는지 레퍼런스 폰(막힌 폰 대역)에서 확인한다(읽기 전용). 호출은 ShizukuBinderWrapper로
+        Shizuku(shell 신분)를 거친다(원격 binder 호출). 제어(POWER로 막기/되돌리기)는 되돌리기 기록 안전성을
+        단단히 한 뒤 별도로 증명한다(이 PoC 범위 아님).
+  관측(PCC 콜백)은 이 PoC 범위 아님 — §5.15 방향 A(bindUserService 호스팅)에서 별도.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="nrc.shizupoc"
+    android:versionCode="1"
+    android:versionName="0.1.0">
+
+    <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="33" />
+
+    <!-- Shizuku 사용 승인을 요청하기 위한 권한(공식 provider aar가 요구) -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <application android:label="NR Shizuku PoC" android:hasCode="true"
+        tools:ignore="AllowBackup,GoogleAppIndexingWarning">
+        <activity android:name=".Main" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 공식 Shizuku provider: 앱이 Shizuku binder를 받는 통로 -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="nrc.shizupoc.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <meta-data android:name="moe.shizuku.client.V3_SUPPORT" android:value="true" />
+    </application>
+</manifest>
