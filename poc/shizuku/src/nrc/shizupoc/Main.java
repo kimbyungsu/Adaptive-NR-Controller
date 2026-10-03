@@ -204,6 +204,13 @@ public final class Main extends Activity {
                     INrObserver obs = INrObserver.Stub.asInterface(binder);
                     log("관측 프로세스 연결됨 → snapshot: " + obs.snapshot());
                     log("= Shizuku가 우리 코드를 shell 프로세스로 띄워 그 안에서 값을 받아왔다는 뜻(방향 A의 토대).");
+                    String watch = obs.startWatch();
+                    log("관측 시작 요청 → " + watch);
+                    if (watch != null && watch.contains("성공")) {
+                        log("이제 그 프로세스가 5G 상태 변화를 지켜봐요(기록 NRSHIZUOBS). 5G가 붙었다 끊기면 로그에 남아요.");
+                    } else {
+                        log("관측 등록이 안 됐어요(위 메시지 참고) — 지켜보기는 시작되지 않았어요.");
+                    }
                 } catch (Throwable t) {
                     log("snapshot 실패: " + unwrap(t));
                 }

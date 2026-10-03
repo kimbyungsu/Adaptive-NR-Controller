@@ -12,10 +12,14 @@ public interface INrObserver extends android.os.IInterface {
     String DESCRIPTOR = "nrc.shizupoc.INrObserver";
     int TRANSACTION_destroy = 16777115; // = FIRST_CALL_TRANSACTION(1) + 16777114, Shizuku 서버가 종료에 쓰는 코드
     int TRANSACTION_snapshot = 3;       // = FIRST_CALL_TRANSACTION(1) + 2 (.aidl의 snapshot()=2)
+    int TRANSACTION_startWatch = 4;     // = FIRST_CALL_TRANSACTION(1) + 3 (.aidl의 startWatch()=3)
 
     void destroy() throws android.os.RemoteException;
 
     String snapshot() throws android.os.RemoteException;
+
+    // 호스트 프로세스에서 전화 상태 관찰(TelephonyCallback) 등록을 시작하고, 초기 상태 요약을 돌려준다.
+    String startWatch() throws android.os.RemoteException;
 
     abstract class Stub extends android.os.Binder implements INrObserver {
 
@@ -52,6 +56,12 @@ public interface INrObserver extends android.os.IInterface {
                     String _result = this.snapshot();
                     reply.writeNoException();
                     reply.writeString(_result);
+                    return true;
+                case TRANSACTION_startWatch:
+                    data.enforceInterface(DESCRIPTOR);
+                    String _rw = this.startWatch();
+                    reply.writeNoException();
+                    reply.writeString(_rw);
                     return true;
                 default:
                     return super.onTransact(code, data, reply, flags);
@@ -92,6 +102,23 @@ public interface INrObserver extends android.os.IInterface {
                 try {
                     _data.writeInterfaceToken(DESCRIPTOR);
                     mRemote.transact(TRANSACTION_snapshot, _data, _reply, 0);
+                    _reply.readException();
+                    _result = _reply.readString();
+                } finally {
+                    _reply.recycle();
+                    _data.recycle();
+                }
+                return _result;
+            }
+
+            @Override
+            public String startWatch() throws android.os.RemoteException {
+                android.os.Parcel _data = android.os.Parcel.obtain();
+                android.os.Parcel _reply = android.os.Parcel.obtain();
+                String _result;
+                try {
+                    _data.writeInterfaceToken(DESCRIPTOR);
+                    mRemote.transact(TRANSACTION_startWatch, _data, _reply, 0);
                     _reply.readException();
                     _result = _reply.readString();
                 } finally {
