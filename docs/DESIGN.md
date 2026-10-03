@@ -745,9 +745,16 @@ OBSERVE  ──(제어 불가 조건이 모두 해소됨, 예: S 확보 후 새 
 
 **실행 게이트(모두 통과해야 privileged 동작).** ① Shizuku binder 연결(살아 있음) ② 우리 앱에 대한 Shizuku 사용 승인(`checkSelfPermission`/`requestPermission`) ③ 필요한 기능 확인 — 그 폰에서 shell 신분으로 **비-USER 사유 쓰기**뿐 아니라 **관측(PCC 등 NR 상태 읽기)·통화 가드**가 되는지(아래 '관측 문제' 참조). 하나라도 아니면 **어떤 privileged 동작도 시도하지 않고** 자동 제어를 일시정지·안내.
 
-**제어(어댑터).** 기존 `Radio`의 읽기/쓰기를 추상화해 "Shizuku 어댑터"를 둔다: binder로 `setAllowedNetworkTypesForReason(비-USER 사유, mask)` 호출(사유 지정 — `cmd phone ...for-users`는 USER 고정이라 금지). **USER(설정 화면 값) 무쓰기** 불변식 유지. **Policy(판단 규칙, 안드로이드 의존 없음)만 그대로 재사용**한다. Engine·Watcher의 **관측 등록·권한 판정·사유별 소유/외부 제한 판정·복구 연결은 수정·검증 대상**이다(어댑터만 바꾸면 되는 게 아니다, 외부 검증). 엔진 시작 때 '자기 제한 회수' 원칙을 이 사유 경로에 이식(현재 회수는 CARRIER 전용 → 새 구현·검증 필요).
+**제어(어댑터).** 기존 `Radio`의 읽기/쓰기를 추상화해 "Shizuku 어댑터"를 둔다: `setAllowedNetworkTypesForReason(비-USER 사유, mask)` 호출(사유 지정 — `cmd phone ...for-users`는 USER 고정이라 금지). **USER(설정 화면 값) 무쓰기** 불변식 유지. **Policy(판단 규칙, 안드로이드 의존 없음)만 그대로 재사용**한다. Engine·Watcher의 **관측 등록·권한 판정·사유별 소유/외부 제한 판정·복구 연결은 수정·검증 대상**이다(어댑터만 바꾸면 되는 게 아니다, 외부 검증). 엔진 시작 때 '자기 제한 회수' 원칙을 이 사유 경로에 이식(현재 회수는 CARRIER 전용 → 새 구현·검증 필요). **아래 '읽기(관측) 설계' 방향 A를 택하면, 읽기뿐 아니라 쓰기(제어)도 Shizuku가 띄운 shell 프로세스 안에서 일어난다 — '어댑터'는 앱이 매 호출을 binder로 감싸는 것이 아니라 그 프로세스 경계가 된다.**
 
-**관측 문제(핵심).** 지금 Watcher는 앱 프로세스의 TelephonyManager로 PCC 등 콜백을 등록해 NR 상태를 본다. 이 콜백에는 통신사 권한 또는 `READ_PRECISE_PHONE_STATE`가 필요한데, **Shizuku 사용 승인만으로 앱 프로세스의 콜백 등록 권한이 자동 생기지 않는다.** 그래서 패치 폰(통신사 권한 없음)에서는 관측도 Shizuku 경유(shell로 `dumpsys` 읽기 등)나 별도 권한 경로로 다시 설계해야 한다 — 미검증. 즉 Shizuku 경로는 '쓰기'뿐 아니라 '읽기(관측)'도 함께 풀어야 완성된다.
+**관측 문제(핵심).** 지금 Watcher는 앱 프로세스의 TelephonyManager로 PCC 등 콜백을 등록해 NR 상태를 본다. 이 콜백에는 통신사 권한 또는 `READ_PRECISE_PHONE_STATE`가 필요한데, **Shizuku 사용 승인만으로 앱 프로세스의 콜백 등록 권한이 자동 생기지 않는다.** 그래서 패치 폰(통신사 권한 없음)에서는 관측도 Shizuku 경유나 별도 권한 경로로 다시 설계해야 한다. 아래가 그 설계다(미검증).
+
+**읽기(관측) 설계 — "눈"을 Shizuku 호스트 프로세스에 둔다 (2026-10-03).**
+핵심 관찰: **앱 프로세스가 못 보는 것을 shell 신분 프로세스는 받을 수 있다.** 지금 앱의 `Watcher`(phoneapp)와 예전 데몬의 `Observer`(daemon)는 **같은 콜백 집합**(ServiceState·PhysicalChannelConfig·SignalStrengths·DataActivity·DataConnectionState·CallState·DisplayInfo)을 등록하는데(Watcher.java·Observer.java·Engine.java·Nrd.java 확인), **이 레퍼런스 폰의 shell 데몬(app_process)에서 실제로 수신했다**(Phase 1, research §2.9). 앱 프로세스에선 통신사 권한·`READ_PRECISE_PHONE_STATE`가 걸린다. 다만 **shell도 "권한 면제"가 아니라 부여된 권한에 기대는 것**이고 권한 구성·PCC 조건은 안드로이드 버전·기기마다 다를 수 있다 → **무권한 패치 폰의 Shizuku 호스트에서도 필요한 권한·호출 신원·실제 수신이 성립하는지는 미검증**(관문 b·d).
+- **방향 A(채택안): Shizuku가 띄우는 shell 신분 프로세스 안에서 관측·제어를 돌린다.** Shizuku의 `bindUserService`는 우리 코드를 담은 프로세스를 shell uid로 띄우고 binder로 앱과 잇는다(§4의 '데몬↔앱' 패턴과 같다). 재사용 범위는 명확히 나눈다: **읽기(Observer)와 판단(Policy, 안드로이드 의존 없음)은 이식 후보**지만, **제어 연결부는 그대로 재사용하면 안 된다** — 예전 데몬 `Controller`는 `Actuator`(daemon/src/nrc/Actuator.java)가 `set-allowed-network-types-for-users`(=**USER 사유 고정**)를 써서 "USER 무쓰기" 불변식을 깬다. 그래서 **비-USER 사유 쓰기·소유 기록·복구 연결은 phoneapp 쪽 `Radio`(CARRIER 등 비-USER)를 본떠 새로 이식·검증**해야 한다(어댑터만 바꾸면 되는 게 아니다, 748행). 앱은 UI만 가진 얇은 클라이언트가 된다.
+- **방향 C(폴백): 앱이 Shizuku shell로 `dumpsys telephony.registry`를 주기적으로 읽어 NR 상태를 긁는다.** 콜백 기반보다 **사건 포착이 늦거나 짧은 변화를 놓칠 수 있고**(기록상 NR 전환 감지 450번 중 446번은 PCC가 먼저, 4번은 서비스상태가 먼저고 PCC가 4~17ms 뒤따름 — research §2.15) 배터리·파싱도 취약 → A가 안 될 때만.
+- **구체 미검증 관문(A).** (ㄱ) Shizuku `UserService.create`는 **우리 패키지**의 컨텍스트를 만든다(`createPackageContextAsUser(pkg)`, Shizuku-API 소스 확인). 그러나 데몬은 전화 서비스의 "호출 패키지가 호출 uid 소유인가" 검사를 통과하려고 **`com.android.shell`로 위장한 FakeContext**(daemon `ShellContext`)를 쓴다. Shizuku 호스트(uid=shell 2000·패키지=우리 것) 안에서도 이 위장이 필요한지·먹히는지 미검증. (ㄴ) Shizuku 재연결 때 UserService 재바인드·관측 재등록을 앱이 다시 걸어야 한다(binder received 리스너). (ㄷ) 호스트 프로세스 수명은 Shizuku binder 수명에 묶인다(끊김은 아래 안전 항).
+- **불변식.** 어느 방향이든 USER(설정 화면 값) 무쓰기·비-USER 사유만·개인정보 없는 기록은 §5.13·§5.16과 같다. Policy는 안드로이드 의존이 없어 그대로 재사용한다.
 
 **끊김·승인 상실 안전(중요).** 비-USER 사유로 NR을 막아 둔 중에 Shizuku 종료·승인 상실이면 **새 제어는 멈춰도 이미 건 막음을 풀 통로가 사라져 제한이 남을 수 있다**(DESIGN §5.13: 제한에 만료 없음·권한 상실 시 해제 불가). → 소유 기록을 유지하고, 통로가 복구되면 실제 값을 확인해 정리. 그동안 타일·화면에 "지금 못 바꿈(권한 통로 없음)"을 정직히 표시. 이 복구 동작은 구현·실기기 검증 전.
 
@@ -759,7 +766,7 @@ OBSERVE  ──(제어 불가 조건이 모두 해소됨, 예: S 확보 후 새 
 
 **UX 한계(냉정히).** 사용자가 개발자 옵션+Shizuku 최초 설정을 해야 하고, 삼성 One UI는 백그라운드 제약 예외가 필요할 수 있다. "설치→버튼 한 번→끝" 수준의 대중 앱 UX는 아니다. 그래도 "최신 Galaxy 아예 불가"보다는 낫다.
 
-**미검증 관문(실기기로만).** (a) 삼성에서 Shizuku(shell 신분)로 비-USER 사유 쓰기가 되는가 (b) 패치 폰에서 Shizuku 경로 전체가 성립하는가 (c) 끊김·복구 정리가 실제로 되는가. 노트20U + 공식 Shizuku로 (a)와 연동 기계 장치는 볼 수 있고, (b)는 패치 실기기가 있어야 한다.
+**미검증 관문(실기기로만).** (a) 삼성에서 Shizuku(shell 신분)로 비-USER 사유 쓰기가 되는가 — 참고: *ADB* shell로는 이 폰에서 이미 됐다(비-USER 사유 쓰기, research §2.14). Shizuku는 같은 shell 신분이라 쓰기는 거의 같을 것이나 Shizuku 경유 자체는 미검증. (b) 패치 폰에서 Shizuku 경로 전체가 성립하는가 (c) 끊김·복구 정리가 실제로 되는가 (d) **'읽기 설계' 방향 A의 관문**: Shizuku 호스트(uid=shell·패키지=우리 것) 안에서 `com.android.shell` FakeContext 위장이 필요/유효한지, 재연결 재바인드·관측 재등록이 되는지. 노트20U + 공식 Shizuku로 (a)·(d)의 기계 배선은 볼 수 있고, (b)는 패치 실기기가 있어야 한다.
 
 **확인 남은 것.** 관문 4 장시간 생존, CARRIER 값의 재부팅 뒤 유지 여부, CARRIER로 막은 상태의 설정 화면 육안 확인, 권한 상실 시 복구 경로(삼성의 네트워크 설정 초기화).
 
