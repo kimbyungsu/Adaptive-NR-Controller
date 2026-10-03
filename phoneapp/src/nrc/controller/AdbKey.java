@@ -1,3 +1,9 @@
+/*
+ * 아래 구현의 adb 공개키 포맷(android_pubkey)·RSA 키 처리는 AOSP system/core/libcrypto_utils(android_pubkey.c)
+ * 와 adb crypto/rsa_2048_key.cpp 를 Java 로 옮긴 것입니다.
+ * Copyright (C) The Android Open Source Project — Apache License, Version 2.0.
+ * 전체 고지·라이선스: 저장소 루트 THIRD_PARTY_NOTICES.md(§4), licenses/Apache-2.0.txt.
+ */
 package nrc.controller;
 
 import java.io.ByteArrayOutputStream;

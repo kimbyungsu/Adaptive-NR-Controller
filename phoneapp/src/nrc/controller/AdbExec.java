@@ -1,3 +1,8 @@
+/*
+ * 아래 구현은 AOSP adb 의 전송 프로토콜(adb.cpp·protocol.txt)을 Java 로 옮긴 것입니다.
+ * Copyright (C) 2007 The Android Open Source Project — Apache License, Version 2.0.
+ * 전체 고지·라이선스: 저장소 루트 THIRD_PARTY_NOTICES.md(§4), licenses/Apache-2.0.txt.
+ */
 package nrc.controller;
 
 import java.io.ByteArrayOutputStream;

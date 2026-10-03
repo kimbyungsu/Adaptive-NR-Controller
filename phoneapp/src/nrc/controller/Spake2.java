@@ -1,8 +1,8 @@
 /*
  * 이 파일은 BoringSSL 의 SPAKE2 구현(crypto/curve25519/spake25519)을 Java 로 옮긴 것입니다.
- * 원저작권: Copyright (c) 2016, Google Inc. / The BoringSSL Authors
- * 원본은 이식 당시 ISC 계열 고지로 배포되었고, 이후 BoringSSL 은 같은 파일을 Apache License 2.0 으로
- * 재라이선스했습니다. 전체 라이선스·고지는 저장소 루트의 THIRD_PARTY_NOTICES.md 및
+ * 원저작권: Copyright (c) 2016, Google Inc. / Copyright 2016 The BoringSSL Authors
+ * 이 원본 파일은 과거 판본에서는 ISC 계열 고지로, 현재 판본에서는 Apache License 2.0 으로 배포됩니다
+ * (프로젝트가 재라이선스함). 전체 라이선스·고지는 저장소 루트의 THIRD_PARTY_NOTICES.md(§5) 및
  * licenses/Apache-2.0.txt 를 참조하세요.
  */
 package nrc.controller;

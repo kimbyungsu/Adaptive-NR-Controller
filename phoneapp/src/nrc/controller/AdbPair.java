@@ -1,3 +1,8 @@
+/*
+ * 아래 구현은 AOSP Android Debug Bridge(adb)의 pairing_connection.cpp(클라이언트 측)를 Java 로 옮긴 것입니다.
+ * Copyright (C) 2020 The Android Open Source Project — Apache License, Version 2.0.
+ * 전체 고지·라이선스: 저장소 루트 THIRD_PARTY_NOTICES.md(§4), licenses/Apache-2.0.txt.
+ */
 package nrc.controller;
 
 import android.net.ssl.SSLSockets;
