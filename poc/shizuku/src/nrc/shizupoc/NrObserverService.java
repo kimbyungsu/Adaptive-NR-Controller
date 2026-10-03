@@ -83,23 +83,79 @@ public final class NrObserverService extends INrObserver.Stub {
             }
             Watch w = new Watch();
             ExecutorService ex = Executors.newSingleThreadExecutor();
-            t.registerTelephonyCallback(ex, w); // shell 신분·com.android.shell로 등록 — §5.15 관문 d
-            this.tm = t;
-            this.cb = w;
-            this.exec = ex;
-            String s = "watch 등록 성공: pkg=" + ctx.getPackageName() + " uid=" + android.os.Process.myUid()
-                    + " sub=" + sub + " — 이제 PCC/서비스상태 변화를 로그(NRSHIZUOBS)로 남긴다";
-            android.util.Log.i(T, s);
+            boolean threw = false;
+            Throwable regEx = null;
+            try {
+                t.registerTelephonyCallback(ex, w); // shell 신분·com.android.shell로 등록 — §5.15 관문 d
+            } catch (Throwable reg) {
+                // 호스트(앱 Application 설치)에선 등록 직후 noted-op 보고 경로가 shell/위장 신분에서 프레임워크 NPE를 던질 수 있다.
+                // 다만 '예외 스택이 AppOps다'만으로 성공을 단정하지 않는다(실패 응답도 AppOps 헤더를 달 수 있어 가릴 수 있음).
+                threw = true;
+                regEx = reg;
+            }
+            // 독립 성공 근거: 실제 콜백(PCC/서비스상태/표시)이 오는지 잠깐 기다려 확인한다. 추론이 아니라 수신으로 확정.
+            boolean gotEvent = w.awaitFirst(2500);
+            if (gotEvent) {
+                this.tm = t;
+                this.cb = w;
+                this.exec = ex;
+                String s = "watch 등록 성공(이벤트 수신 확인): pkg=" + ctx.getPackageName() + " uid=" + android.os.Process.myUid()
+                        + " sub=" + sub + (threw ? " (등록 호출에서 예외가 있었으나 이벤트 수신으로 등록 확정)" : "");
+                android.util.Log.i(T, s);
+                return s;
+            }
+            // 이벤트 미수신 → 성공으로 보지 않는다. 등록이 부분적으로 됐을 수도 있으니 해제는 공통으로 먼저 시도.
+            ex.shutdownNow();
+            try {
+                t.unregisterTelephonyCallback(w);
+            } catch (Throwable ignore) {
+            }
+            if (threw && !isAppOpsNotingGlitch(regEx)) {
+                Throwable c = regEx;
+                while (c instanceof java.lang.reflect.InvocationTargetException && c.getCause() != null) c = c.getCause();
+                String s = "watch 등록 실패: " + c.getClass().getSimpleName() + ": " + c.getMessage();
+                android.util.Log.w(T, "watch 등록 실패(이벤트도 없음)", regEx);
+                return s;
+            }
+            String s = "watch 등록 미확인: 2.5초 안에 이벤트가 안 왔어요 — 등록 실패 가능. 다시 시도해 주세요"
+                    + (threw ? " (등록 호출 예외 있었음)" : "");
+            android.util.Log.w(T, s);
             return s;
         } catch (Throwable e) {
             Throwable c = e;
             while (c instanceof java.lang.reflect.InvocationTargetException && c.getCause() != null) c = c.getCause();
-            String s = "watch 등록 실패: " + c.getClass().getSimpleName() + ": " + c.getMessage();
+            // 원인 줄을 찾기 위해 전체 스택을 남긴다(관측은 등록됐는데 등록 '뒤' 어딘가에서 던지는 경우 추적).
+            android.util.Log.w(T, "watch 등록 실패 상세", c);
+            StackTraceElement[] st = c.getStackTrace();
+            String where = (st != null && st.length > 0) ? (" @ " + st[0]) : "";
+            String s = "watch 등록 실패: " + c.getClass().getSimpleName() + ": " + c.getMessage() + where;
             android.util.Log.w(T, s);
             return s;
         } finally {
             Binder.restoreCallingIdentity(token);
         }
+    }
+
+    /**
+     * 예외(및 원인 사슬)의 스택에 AppOps noted-op 보고 흔적이 있으면 true — '그 종류의 예외'인지만 분류한다.
+     * 등록 성공을 증명하지는 않는다(실패 응답에도 AppOps 헤더가 붙을 수 있음). 성공은 awaitFirst(실수신)로만 확정한다.
+     * 용도: 미수신일 때 '진짜 실패(비-AppOps 예외)'와 'AppOps 보고 잡음'을 구분해 보고 문구를 고르는 데만 쓴다.
+     */
+    private static boolean isAppOpsNotingGlitch(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            StackTraceElement[] st = c.getStackTrace();
+            if (st == null) continue;
+            for (StackTraceElement e : st) {
+                String cls = e.getClassName();
+                String m = e.getMethodName();
+                if (cls.contains("AppOpsManager")
+                        || "readAndLogNotedAppops".equals(m)
+                        || cls.contains("SyncNotedAppOp")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** 컨텍스트가 com.android.shell인 TelephonyManager(숨은 생성자, 데몬 Phone.manager와 동일). */
@@ -115,8 +171,21 @@ public final class NrObserverService extends INrObserver.Stub {
             TelephonyCallback.ServiceStateListener,
             TelephonyCallback.DisplayInfoListener {
 
+        // 첫 콜백 수신 신호(등록이 실제로 됐는지 독립 확인용).
+        private final java.util.concurrent.CountDownLatch first = new java.util.concurrent.CountDownLatch(1);
+
+        boolean awaitFirst(long ms) {
+            try {
+                return first.await(ms, java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+
         @Override
         public void onPhysicalChannelConfigChanged(List<PhysicalChannelConfig> configs) {
+            first.countDown();
             int n = configs == null ? 0 : configs.size();
             boolean nrSecondary = false;
             if (configs != null) {
@@ -134,12 +203,14 @@ public final class NrObserverService extends INrObserver.Stub {
 
         @Override
         public void onServiceStateChanged(ServiceState ss) {
+            first.countDown();
             android.util.Log.i(T, "ss state=" + (ss == null ? -1 : ss.getState())
                     + " roaming=" + (ss != null && ss.getRoaming()));
         }
 
         @Override
         public void onDisplayInfoChanged(TelephonyDisplayInfo di) {
+            first.countDown();
             android.util.Log.i(T, "display override=" + (di == null ? -1 : di.getOverrideNetworkType()));
         }
     }
