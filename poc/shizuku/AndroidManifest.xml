@@ -20,6 +20,10 @@
     <!-- Shizuku 사용 승인을 요청하기 위한 권한(공식 provider aar가 요구) -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
+    <!-- 재부팅 뒤 '되돌릴 기록'이 남았을 때 사용자에게 알리기 위한 권한(특권 아님, self-bootstrap 아님) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application android:label="NR Shizuku PoC" android:hasCode="true"
         tools:ignore="AllowBackup,GoogleAppIndexingWarning">
         <activity android:name=".Main" android:exported="true">
@@ -28,6 +32,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 재부팅 뒤 '되돌릴 기록'이 남아 있으면 알림으로 알린다(BootReceiver, 특권 없음) -->
+        <receiver android:name=".BootReceiver" android:exported="true" android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- 공식 Shizuku provider: 앱이 Shizuku binder를 받는 통로 -->
         <provider

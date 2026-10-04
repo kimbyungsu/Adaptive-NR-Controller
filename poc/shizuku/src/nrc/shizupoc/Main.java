@@ -35,6 +35,8 @@ import rikka.shizuku.SystemServiceHelper;
  * 목적: 통신사 권한에 기대지 않고, 사용자가 설치·동의한 Shizuku(shell 신분)를 거쳐
  *   (1) 전화 설정(허용 망 사유별 값)을 '읽고'
  *   (2) POWER 사유로 5G(NR)만 '잠깐 막았다 되돌리는' 제어가 레퍼런스 폰에서 되는지 확인한다.
+ *   (3) POWER로 막아 '둔 채'(쉬는 중) Shizuku가 죽거나 폰이 재부팅돼도, 통로가 돌아오면 내구 기록으로 정확히
+ *       되돌리는지 — 그리고 통로가 없는 동안 '지금 못 바꿈'을 정직히 보여주는지 확인한다(§5.15 끊김·승인 상실 안전).
  * 안전 불변식:
  *   - USER(0) 사유는 절대 쓰지 않는다(설정 화면 값 불변). 쓰기는 POWER(1)만. (cmd ...for-users는 USER 고정이라 안 씀.)
  *   - 모든 특권 작업(읽기·쓰기시험·자동복구)을 프로세스 단일 스레드(EXEC)로 직렬화 → 겹침 없음.
@@ -47,7 +49,7 @@ import rikka.shizuku.SystemServiceHelper;
  *     막지 못한다(TOCTOU). 값만으로는 작성자를 못 가린다(ABA). 이는 제품 데몬 §5.6.3과 동일한 best-effort 한계다.
  *   - 기록 저장·삭제는 디렉터리 fsync로 디스크에 확정한다(전원 차단 뒤 옛 기록 재등장·유실 방지).
  *   - 미해결(또는 손상) 복구 기록이 있으면 새 시험을 시작하지 않고 그 기록을 덮지도 않는다.
- *   - 끊김·크래시 시 기록이 남아 재연결/승인/다시읽기에서 복구 재개.
+ *   - 끊김·크래시·재부팅 시 기록이 남아 Shizuku 재연결/승인 또는 [쉬기 끝]에서 복구 재개(재부팅은 BootReceiver가 알림).
  * 호출: SystemServiceHelper.getSystemService("phone")을 ShizukuBinderWrapper로 감싸 ITelephony로 reflection.
  *   앱 프로세스의 숨은 API 제한은 LSPosed HiddenApiBypass로 완화(특권 상승 아님).
  * 관측(PCC 콜백)은 이 PoC 범위 아님(§5.15 방향 A에서 별도).
@@ -58,6 +60,10 @@ public final class Main extends Activity {
     static final long NR_BIT = 1L << 19; // TelephonyManager NR 비트(= 840583 - 316295, research §2.14)
     static final int REQ = 1001;
     static final String TAG = "NRC3"; // 복구 기록 포맷 선두 표지(소유권: sub,원값,우리가쓴값)
+    /** 되돌릴 통로(Shizuku)가 없어 지금은 확인·변경을 못 하는 상태를 정직히 알리는 문구(§5.15 '지금 못 바꿈').
+     *  pending 존재만으로 '현재 차단 확정'을 단정하지 않는다(쓰기 전 기록일 수 있음) → '남아 있을 수 있음'으로 한정. */
+    static final String STUCK =
+            "5G가 막힌 채 남아 있을 수 있어요. 그런데 지금은 되돌릴 통로(Shizuku)가 없어 앱이 확인·변경을 못 해요(권한 통로 없음).";
 
     private static final ExecutorService EXEC = Executors.newSingleThreadExecutor();
     private static final AtomicBoolean WRITING = new AtomicBoolean(false);
@@ -65,6 +71,8 @@ public final class Main extends Activity {
     private TextView tv;
     private final StringBuilder buf = new StringBuilder();
     private final SimpleDateFormat ts = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US);
+    /** 되돌리기 미완(손상/충돌/불일치) 사유 — 해결 전까지 화면(head)에 계속 띄워 일반 '쉬는 중' 안내로 덮이지 않게 한다. 성공 시 null. */
+    private volatile String issue;
 
     private final Shizuku.OnRequestPermissionResultListener permL =
             (requestCode, grantResult) -> { EXEC.submit(this::recoverIfPending); runOnUiThread(this::refresh); };
@@ -76,6 +84,7 @@ public final class Main extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         allowHiddenApis();
+        askPostNotifications(); // 재부팅 알림(BootReceiver)을 위해 — 거부돼도 앱 안 표시로 대체(특권 아님).
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         int pad = (int) (16 * getResources().getDisplayMetrics().density);
@@ -87,9 +96,19 @@ public final class Main extends Activity {
         col.addView(read);
 
         Button test = new Button(this);
-        test.setText("5G 잠깐 막았다 되돌리기 시험 (POWER)");
+        test.setText("5G 막았다 바로 되돌리기 (한 번에)");
         test.setOnClickListener(this::onTest);
         col.addView(test);
+
+        Button rest = new Button(this);
+        rest.setText("5G 쉬기 시작 (막고 그대로 둠)");
+        rest.setOnClickListener(this::onStartRest);
+        col.addView(rest);
+
+        Button wake = new Button(this);
+        wake.setText("5G 쉬기 끝 (되돌리기)");
+        wake.setOnClickListener(this::onEndRest);
+        col.addView(wake);
 
         Button bind = new Button(this);
         bind.setText("관측 프로세스 연결 시험 (bindUserService)");
@@ -130,17 +149,25 @@ public final class Main extends Activity {
         android.util.Log.i("NRSHIZU", "=== " + s);
         buf.setLength(0);
         buf.append(s).append("\n\n");
+        String iss = issue;
+        if (iss != null) {
+            buf.append("[미해결] ").append(iss).append("\n\n");
+        }
         if (pendingFile().exists()) {
-            buf.append("[주의] 미완료 복구 기록이 있어요 — Shizuku 연결+승인되면 자동으로 되돌리고,"
-                    + " 안 되면 [다시 읽기]로 다시 시도해요.\n\n");
+            buf.append("[주의] 되돌릴 기록이 있어요(5G 막음이 남아 있을 수 있음) — Shizuku가 (다시) 연결·승인되거나"
+                    + " [쉬기 끝]을 누르면 되돌리기를 시도해요.\n\n");
         }
         final String out = buf.toString();
         runOnUiThread(() -> tv.setText(out));
     }
 
     private void refresh() {
+        boolean resting = pendingFile().exists(); // 되돌릴 기록 = POWER로 5G를 막아 둔 채 끝나지 않음
         if (!Shizuku.pingBinder()) {
-            head("Shizuku가 안 떠 있어요.\nShizuku 앱을 열어 '시작'한 뒤 [다시 읽기]를 눌러요.");
+            // 통로 없음. 막아 둔 게 있으면 '지금 못 바꿈'을 정직히 — 자동 복구(재연결 리스너)가 돌아오면 그때 되돌린다.
+            head(resting
+                    ? STUCK + "\nShizuku 앱을 열어 '시작'하면 그때 되돌리기를 시도할게요(승인·기록 확인 후)."
+                    : "Shizuku가 안 떠 있어요.\nShizuku 앱을 열어 '시작'한 뒤 [다시 읽기]를 눌러요.");
             return;
         }
         if (Shizuku.isPreV11()) {
@@ -149,15 +176,20 @@ public final class Main extends Activity {
         }
         if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
             if (Shizuku.shouldShowRequestPermissionRationale()) {
-                head("Shizuku 사용 권한이 거부돼 있어요. Shizuku 앱에서 이 앱을 허용해 주세요.");
+                head((resting ? STUCK + "\n" : "")
+                        + "Shizuku 사용 권한이 거부돼 있어요. Shizuku 앱에서 이 앱을 허용해 주세요"
+                        + (resting ? " — 허용되면 되돌리기를 시도할게요." : "."));
             } else {
-                head("Shizuku 사용 권한을 요청할게요. 뜨는 창에서 '허용'을 눌러요.");
+                head((resting ? STUCK + "\n" : "") + "Shizuku 사용 권한을 요청할게요. 뜨는 창에서 '허용'을 눌러요.");
                 Shizuku.requestPermission(REQ);
             }
             return;
         }
-        head("Shizuku 권한 OK.");
-        if (pendingFile().exists()) EXEC.submit(this::recoverIfPending);
+        // 통로 있음. 쉬는 중이면 자동 복구는 '재연결/승인' 리스너가 맡고, 여기(수동 다시읽기)서는 상태만 보여준다
+        // (여기서 자동 복구하면 의도한 '막고 유지'가 깨진다 — 되돌리려면 [쉬기 끝]).
+        head(resting
+                ? "Shizuku 권한 OK — 되돌릴 기록이 있어요(막음이 남아 있을 수 있음, 아래 POWER 값으로 실제 상태 확인). 되돌리려면 [쉬기 끝], 또는 Shizuku를 끄거나 재부팅해 복구를 시험하세요."
+                : "Shizuku 권한 OK.");
         EXEC.submit(this::readAll);
     }
 
@@ -311,22 +343,138 @@ public final class Main extends Activity {
         }
         // 2) CAS 되돌리기(항상 시도). 현재 값이 우리가 쓴 값일 때만 원값으로 복원.
         if (!restoreAndClear(sub, original, noNr, "되돌림")) {
-            log("[경고] 되돌리기를 확정 못 했어요. 복구 기록을 남겨 둬요 — [다시 읽기] 또는 다시 열 때 자동 복구해요.");
+            log("[경고] 되돌리기를 확정 못 했어요. 복구 기록을 남겨 둬요 — Shizuku가 다시 연결되거나 [쉬기 끝]을 누르면 되돌리기를 시도해요.");
         }
         log("\nUSER 사유는 한 번도 쓰지 않았어요(설정 화면 값 불변).");
     }
 
-    private void recoverIfPending() {
+    private void recoverIfPending() { doRestore("자동 복구"); }
+
+    /**
+     * 되돌릴 기록이 있으면 CAS로 되돌린다(EXEC 스레드). 통로(Shizuku)가 없으면 되돌리지 않고 기록을 남겨 '지금 못 바꿈'.
+     * 호출: 재연결(recvL)·승인(permL)·수동 [쉬기 끝](endRest)·쓰기 중 오류. label은 로그 구분용.
+     */
+    private void doRestore(String label) {
         File f = pendingFile();
         if (!f.exists()) return;
-        if (!Shizuku.pingBinder() || Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) return;
-        long[] rec = readPendingValidated();
-        if (rec == null) {
-            log("[경고] 복구 기록이 손상됐어요 — 자동으로 되돌리지 않고 남겨 둬요. 알려 주시면 PC로 확인할게요.");
+        if (!shizukuReady()) {
+            log("[" + label + "] 아직 Shizuku 통로가 없어 못 되돌려요(기록 유지). Shizuku를 켜고 승인하면 되돌리기를 시도할게요.");
             return;
         }
-        log("지난 시험의 미완료 복구를 시도해요(CAS): POWER 원값 " + rec[1]);
-        restoreAndClear((int) rec[0], rec[1], rec[2], "자동 복구");
+        long[] rec = readPendingValidated();
+        if (rec == null) {
+            issue = "복구 기록이 손상됐어요 — 자동 복원 안 함(PC 확인 필요).";
+            log("[경고] " + issue);
+            return;
+        }
+        log(label + "(CAS): POWER 원값 " + rec[1] + "으로 되돌릴게요.");
+        boolean ok = restoreAndClear((int) rec[0], rec[1], rec[2], label);
+        // 성공(기록 삭제)일 때만 화면을 새로고침한다 — 실패/충돌/불일치면 그 사유(issue·로그)를 일반 '쉬는 중' 안내로 덮지 않는다.
+        if (ok) runOnUiThread(this::refresh);
+    }
+
+    // ---- 쉬기(막고 유지) 시작/끝 — #3·#4 시험용: 막아 '둔 채' 통로 상실·재부팅을 겪어 본다 ----
+
+    private void onStartRest(View v) {
+        if (!WRITING.compareAndSet(false, true)) {
+            log("[무시] 쓰기 작업이 이미 진행/대기 중이에요.");
+            return;
+        }
+        head("5G 쉬기 시작: POWER로 NR만 막고 그대로 둬요 (USER는 안 건드림)…");
+        EXEC.submit(() -> {
+            try {
+                startRest();
+            } finally {
+                WRITING.set(false);
+            }
+        });
+    }
+
+    /** 막고 '유지'(되돌리지 않음). 되돌리기는 통로가 돌아올 때(재연결/승인) 또는 [쉬기 끝]이 맡는다. */
+    private void startRest() {
+        if (pendingFile().exists()) {
+            if (readPendingValidated() == null) {
+                issue = "이미 있는 복구 기록이 손상돼 있어요 — 새로 막지 않음(PC 확인 필요).";
+                log("[중단] " + issue);
+                return;
+            }
+            // 이미 막아 둔 기록이 있으면 새로 막지 않는다. 통로가 없으면 '지금 못 바꿈'을 정직히(일반 '쉬는 중'으로 덮지 않음).
+            log(shizukuReady()
+                    ? "이미 되돌릴 기록이 있어요(5G 막음이 남아 있을 수 있음). 되돌리려면 [쉬기 끝]."
+                    : STUCK + "  이미 되돌릴 기록이 있어요 — Shizuku를 켜면 [쉬기 끝]으로 되돌리기를 시도할 수 있어요.");
+            return;
+        }
+        if (!shizukuReady()) {
+            log("Shizuku 통로가 없어 막을 수 없어요. 먼저 Shizuku를 켜고 승인해 주세요.");
+            return;
+        }
+        int sub = SubscriptionManager.getDefaultDataSubscriptionId();
+        Object tel;
+        long original;
+        try {
+            tel = telephony();
+            original = getReason(tel, sub, POWER);
+            log("시작 POWER = " + original + (hasNr(original) ? " (NR 있음)" : " (NR 없음)"));
+        } catch (Throwable t) {
+            log("준비 실패(쓰기 안 함): " + unwrap(t));
+            return;
+        }
+        if (!hasNr(original)) {
+            log("원래 POWER에 NR이 없어요 — 이미 막혀 있어 '쉬기 시작'은 생략해요.");
+            return;
+        }
+        long noNr = original & ~NR_BIT;
+        if (!savePendingDurable(sub, original, noNr)) {
+            log("[중단] 복구 기록을 안전히 저장하지 못했어요 — 5G 막기를 하지 않아요.");
+            return;
+        }
+        try {
+            setReason(tel, sub, POWER, noNr);
+            log("POWER ← " + noNr + " (NR 제거) 요청함");
+            Thread.sleep(400);
+            long after = getReason(tel, sub, POWER);
+            log("다시 읽은 POWER = " + after + (hasNr(after) ? " (NR 있음)" : " (NR 없음)"));
+            if (hasNr(after)) {
+                log("주의: NR이 안 빠졌어요(쓰기 거부?) — 되돌리기를 시도해요.");
+                doRestore("막기 실패 후 되돌리기");
+                return;
+            }
+            log("확인: 5G가 POWER로 막혔고 이 상태로 둬요(쉬는 중). USER는 안 건드렸어요(설정 화면 값 불변).");
+            log("\n이제 시험하세요 — ① Shizuku 강제 종료 후 다시 시작 → 자동 복원 시도, 또는 ② 폰 재부팅 → 알림/열기 → 복원 시도.");
+            runOnUiThread(this::refresh);
+        } catch (Throwable t) {
+            log("쓰기 중 오류: " + unwrap(t) + " — 기록이 있으니 되돌리기를 시도해요.");
+            doRestore("오류 후 되돌리기");
+        }
+    }
+
+    private void onEndRest(View v) {
+        head("5G 쉬기 끝: 되돌릴 게 있으면 원래대로 되돌리기를 시도할게요…");
+        // 판단을 EXEC로 보낸다 — 큐에 앞서 제출된 '쉬기 시작'이 pending을 만든 뒤에 평가되도록 순서를 보장(종료 의도 소실 방지).
+        EXEC.submit(this::endRestOnExec);
+    }
+
+    private void endRestOnExec() {
+        if (!pendingFile().exists()) {
+            log("지금 쉬는 중이 아니에요 — 되돌릴 기록이 없어요.");
+            return;
+        }
+        if (!shizukuReady()) {
+            log(STUCK + "  Shizuku를 켜고 승인하면 되돌리기를 시도하고, 또는 다시 [쉬기 끝]을 눌러요.");
+            return;
+        }
+        doRestore("쉬기 끝(수동)");
+    }
+
+    /** 재부팅 알림(BootReceiver)을 위해 POST_NOTIFICATIONS를 요청(API 33+). 거부돼도 앱 안 표시로 대체(특권 아님). */
+    private void askPostNotifications() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return;
+        try {
+            if (checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 2002);
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     /**
@@ -358,7 +506,8 @@ public final class Main extends Activity {
                     clearConfirmed();
                     return true;
                 }
-                log("경고: 복구 값이 원래와 달라요(기록 유지).");
+                issue = "되돌린 값(" + back + ")이 원래 값(" + original + ")과 달라요 — 기록 유지(PC 확인 필요).";
+                log("경고: " + issue);
                 return false;
             }
             if (hasNr(cur)) {
@@ -368,17 +517,20 @@ public final class Main extends Activity {
                 return true;
             }
             // !hasNr(cur) && cur != ours && cur != original → NR은 막혔는데 우리/원 값 모두 아님 = 충돌
-            log("[충돌] 현재 POWER=" + cur + ": NR은 막혀 있으나 우리가 쓴 값도 원값도 아니에요 — 누가 막았는지 불명.");
-            log("덮어쓰지 않고 복구 기록을 남겨요(자동 복구 보류). PC로 확인이 필요해요.");
+            issue = "현재 POWER=" + cur + ": NR은 막혀 있으나 우리가 쓴 값도 원값도 아니에요 — 누가 막았는지 불명, 자동 복구 보류(PC 확인 필요).";
+            log("[충돌] " + issue);
+            log("덮어쓰지 않고 복구 기록을 남겨요.");
             return false; // 기록 보존(clear 안 함)
         } catch (Throwable t) {
-            log("되돌리기 오류(기록 유지): " + unwrap(t));
+            issue = "되돌리기 오류: " + unwrap(t) + " (기록 유지).";
+            log(issue);
             return false;
         }
     }
 
     /** 복구가 끝난 경우에만 호출: 기록을 디스크에 확정 삭제(디렉터리 fsync). */
     private void clearConfirmed() {
+        issue = null; // 되돌리기가 확정 해결됨 → 미해결 사유 해제
         if (!clearPending()) log("(복구 기록 삭제 미확정 — 다음 연결에서 한 번 더 복구 시도될 수 있음)");
     }
 
@@ -505,6 +657,15 @@ public final class Main extends Activity {
     }
 
     // ---- Shizuku 경유 전화 서비스 ----
+
+    /** Shizuku 통로가 '지금 바로 특권 호출 가능' 상태인지: binder 살아 있음 + 우리 앱 승인됨. */
+    private static boolean shizukuReady() {
+        try {
+            return Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
 
     private static Object telephony() throws Exception {
         IBinder raw = SystemServiceHelper.getSystemService("phone");
