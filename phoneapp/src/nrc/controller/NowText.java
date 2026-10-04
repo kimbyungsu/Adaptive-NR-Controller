@@ -57,18 +57,30 @@ final class NowText {
      * @param external 통신사 칸에 앱이 건 것이 아닌 5G 막음이 있는지(다른 쪽, 또는 앱을 지웠다 다시 설치해 기록이 없어진 막음)
      */
     static NowText of(Live l, TileText tile, long now, boolean leftover, boolean external) {
+        return of(l, tile, now, leftover, external, false);
+    }
+
+    /**
+     * @param pathDown 바꿀 통로(Shizuku 방식의 도우미)가 지금 없다. 이때 남은 막음은 앱이 풀 수 없으므로 "30초마다 다시 풂"이라고 하지 않는다
+     *                 (DESIGN §5.15 '지금 못 바꿈' 정직 표시).
+     */
+    static NowText of(Live l, TileText tile, long now, boolean leftover, boolean external, boolean pathDown) {
         List<String> ls = new ArrayList<>();
         if (external) ls.add(EXTERNAL_LINE);
         if (l == null) {
             // 판단이 꺼져 있다고 곧 순정은 아니다(외부 검증 지적): 남은 막음·문제를 먼저 알린다
-            if (leftover) {
+            if (leftover && pathDown) {
+                ls.add("앱이 걸어 둔 5G 막음이 남아 있을 수 있어요. 지금은 바꿀 통로(Shizuku)가 없어 앱이 확인도 풀기도 못 해요 — "
+                        + "통로가 돌아오면 곧바로 풀기를 시도해요.");
+            } else if (leftover) {
                 ls.add("앱이 걸어 둔 5G 막음이 아직 남아 있어요. 통화 중이면 통화가 끝난 뒤, 아니면 30초마다 다시 풀어요.");
             }
             if (tile.look == TileText.Look.UNAVAILABLE) ls.add("문제: " + tile.subtitle + " — 지금은 앱이 5G/LTE를 바꿀 수 없어요.");
             if (!leftover && !external && tile.look != TileText.Look.UNAVAILABLE) {
                 ls.add("판단이 꺼져 있고 남은 막음도 없어, 삼성 설정대로 순정(폰 기본 동작)이에요.");
             }
-            String next = leftover ? "막음이 풀리면 순정으로 돌아가요."
+            String next = pathDown ? "Shizuku 통로가 돌아오면 앱이 이어서 해요(아래 'Shizuku 방식' 안내 참고)."
+                    : leftover ? "막음이 풀리면 순정으로 돌아가요."
                     : "자동 제어 꺼짐".equals(tile.subtitle) ? "타일을 한 번 탭하면 자동 제어를 켜요."
                     : TileText.STOPPED.equals(tile.subtitle) ? "타일을 탭하면 다시 시작해요."
                     : TileText.STARTING.equals(tile.subtitle) ? "곧 시작해요."

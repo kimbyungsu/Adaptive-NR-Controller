@@ -5,7 +5,11 @@
   - 타일 탭 = 자동 제어 켜기·끄기, 길게 누르면 상세 화면. 다른 앱 위 표시(오버레이)는 쓰지 않는다.
   - 알림 허락은 먼저 묻지 않는다. 사용자가 앱 알림을 꺼 두면 알림 창에 줄이 없다(안드로이드 13+).
   - 처음 설정(PC 없이): 폰 자체 무선 디버깅에 이 폰 안에서(127.0.0.1) 연결해 인정 목록에 앱 줄을 덧붙인다. 인터넷 권한은 이 연결에만 쓴다.
+  - 길 2(Shizuku, DESIGN §5.15·§5.16): 등록 방식이 막힌 폰은 사용자가 설치·승인한 Shizuku가 우리 도우미(HostService)를
+    shell 신분 프로세스로 띄워 그 안에서 읽기·통신사 칸 쓰기·관측을 한다. 앱은 Shizuku를 켜지 않는다(self-bootstrap 금지).
 -->
+<!-- Shizuku 공식 provider·권한(공개 Shizuku-API, MIT). provider는 INTERACT_ACROSS_USERS_FULL(시스템·shell급)이 있어야만 부를 수 있어
+     일반 앱이 부를 수 있는 입구가 아니다(§5.13 제품 앱의 보안 조건). Shizuku 서버(shell)가 이 통로로 binder를 넘겨준다. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="nrc.controller"
     android:versionCode="1"
@@ -19,6 +23,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!-- Shizuku 앱이 설치됐는지·'부팅 시 시작'이 켜졌는지 보고, [Shizuku 앱 열기]를 하려면 그 앱이 보여야 한다(안드로이드 11+) -->
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+    </queries>
 
     <application
         android:label="5G 자동 제어"
@@ -80,5 +90,15 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="nrc.controller.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+        <meta-data
+            android:name="moe.shizuku.client.V3_SUPPORT"
+            android:value="true" />
     </application>
 </manifest>

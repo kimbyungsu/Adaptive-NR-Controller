@@ -19,6 +19,13 @@ public final class NowTextTest {
         TileText lost = TileText.of(true, "5G 막힘 · 다시 설정 필요", TileText.MODE_NR, false, null, true, false);
         t = NowText.of(null, lost, now, true, false);
         is(has(t, "문제: 5G 막힘 · 다시 설정 필요") && !has(t, "순정(폰"), "권한 상실·남은 막음");
+        // Shizuku 방식에서 통로(도우미)가 없음: 남은 막음을 "30초마다 풂"이라고 하지 않고 '지금 못 바꿈'을 정직히
+        TileText shzOff = TileText.of(true, "5G 막힘 · Shizuku 꺼짐", TileText.MODE_NR, false, null, true, false);
+        t = NowText.of(null, shzOff, now, true, false, true);
+        is(has(t, "통로(Shizuku)가 없어") && !has(t, "30초마다") && has(t, "문제: 5G 막힘 · Shizuku 꺼짐")
+                && t.next.contains("Shizuku 통로가 돌아오면"), "Shizuku 통로 없음·남은 막음");
+        t = NowText.of(null, TileText.of(true, "Shizuku 꺼짐", TileText.MODE_NR, false, null, true, false), now, false, false, true);
+        is(!has(t, "남아 있을 수") && !has(t, "순정(폰") && has(t, "문제: Shizuku 꺼짐"), "Shizuku 통로 없음·남은 막음 없음");
 
         // 지켜보는 중: 기준·최근 끊김·빠지는 시각
         Live l = base();

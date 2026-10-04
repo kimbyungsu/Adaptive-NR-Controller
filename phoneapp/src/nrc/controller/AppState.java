@@ -26,8 +26,25 @@ final class AppState {
     static final String START_SHOWN = "startShown";
     /** 처음 설정이 이 폰에서 어떻게 끝났는지(SupportCheck.SETUP_*). 점검 화면이 읽는다. */
     static final String SETUP_RESULT = "setupResult";
+    /**
+     * 제어 방식 선택(DESIGN §5.16): WAY_AUTO(기본) = 통신사 인정(길 1) 우선, 등록 방식이 막힌 게 확인된 폰만 Shizuku(길 2).
+     * WAY_SHIZUKU = 늘 Shizuku로(개발 시험: 길 1이 되는 폰에서 길 2 흐름을 확인할 때, 앱 제목을 길게 눌러 고른다).
+     */
+    static final String WAY = "way";
+    static final String WAY_AUTO = "auto";
+    static final String WAY_SHIZUKU = "shizuku";
+    /** 마지막으로 본 폰 부팅 횟수(재부팅을 활동 기록에 남기려고). */
+    static final String BOOT_SEEN = "bootSeen";
 
     private AppState() {
+    }
+
+    static String way(Context c) {
+        return prefs(c).getString(WAY, WAY_AUTO);
+    }
+
+    static void setWay(Context c, String way) {
+        prefs(c).edit().putString(WAY, way).apply();
     }
 
     static SharedPreferences prefs(Context c) {

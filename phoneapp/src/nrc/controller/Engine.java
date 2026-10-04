@@ -30,8 +30,11 @@ final class Engine implements Policy.Env, Watcher.Listener {
         /** 상태가 바뀌었다(타일·화면 갱신). mode = TileText.MODE_*. */
         void publish(int mode, String phase, String problem);
 
-        /** 자동 제어 끄기(stop)가 끝났다. */
-        void stopped();
+        /**
+         * 자동 제어 끄기(stop)가 끝났다. which = 끝난 엔진. 알림은 작업 줄에 늦게 들어갈 수 있으므로, 받는 쪽은 그 사이 이미 바뀐
+         * 엔진이면 무시해야 한다(외부 검증 지적: 늦은 알림이 새 엔진을 지워 엔진이 둘 돌았다).
+         */
+        void stopped(Engine which);
     }
 
     static final long TICK_MS = 30_000;
@@ -168,9 +171,9 @@ final class Engine implements Policy.Env, Watcher.Listener {
         userMask = u;
         userUnreadable = u < 0;
         simBlock = simBlockNow();
-        rec("engine_start", "sub", radio.sub, "user", u, "carrier", radio.read(Radio.CARRIER),
-                "power", radio.read(Radio.POWER), "enable2g", radio.read(Radio.ENABLE_2G), "own", own(),
-                "simBlock", simBlock == null ? "none" : simBlock, "wifi", wifi, "screen", screen);
+        rec("engine_start", "sub", radio.sub, "way", radio.viaShizuku() ? "shizuku" : "carrier", "user", u,
+                "carrier", radio.read(Radio.CARRIER), "power", radio.read(Radio.POWER), "enable2g", radio.read(Radio.ENABLE_2G),
+                "own", own(), "simBlock", simBlock == null ? "none" : simBlock, "wifi", wifi, "screen", screen);
         policy.screen(t, screen);
         policy.wifi(t, wifi);
         refreshRestrictions(t);
@@ -178,7 +181,12 @@ final class Engine implements Policy.Env, Watcher.Listener {
         policy.setMode(t, CarrierPlan.hasNr(u));
         policy.startQuiet(t);
         watcher = new Watcher(log, this);
-        radio.tm().registerTelephonyCallback(worker, watcher);
+        String watchErr = radio.watch(worker, watcher);
+        if (watchErr != null) {
+            // 상태를 못 보면 끊김을 셀 수 없어 쉬기를 시작하지 않는다(5G는 그대로). 숨기지 않고 문제로 알린다
+            problem = "5G 상태 보기 실패";
+            rec("watch_failed", "msg", watchErr);
+        }
         ticker = worker.scheduleWithFixedDelay(() -> guarded("tick", this::tick), TICK_MS, TICK_MS, TimeUnit.MILLISECONDS);
         after(t);
     }
@@ -194,7 +202,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
     /** 시험용 쉬는 시간(전환 최소 간격과 같게, daemon과 같음). */
     static final long TEST_COOL_MS = 120_000;
 
-    /** 자동 제어 끄기: 판단 규칙의 종료 절차(쉬는 중이면 풀기, 통화 중이면 통화 뒤)를 거친 뒤 stopDone → Host.stopped(). */
+    /** 자동 제어 끄기: 판단 규칙의 종료 절차(쉬는 중이면 풀기, 통화 중이면 통화 뒤)를 거친 뒤 stopDone → Host.stopped(this). */
     void stop() {
         if (stopped || policy == null) return;
         policy.stop(now());
@@ -210,6 +218,23 @@ final class Engine implements Policy.Env, Watcher.Listener {
         reconcile(why, true);
     }
 
+    /**
+     * Shizuku 방식의 통로(도우미)가 끊겼다: 엔진을 멈춘다. 풀 통로가 없으니 막음 기록은 그대로 둔다 —
+     * 통로가 돌아오면 새 엔진의 시작 정리(reconcile)가 실제 값을 읽어 우리 막음이면 푼다(DESIGN §5.15 끊김 안전).
+     */
+    void linkLost() {
+        halt("link_lost");
+    }
+
+    boolean viaShizuku() {
+        return radio.viaShizuku();
+    }
+
+    /** 이 엔진의 통로가 아직 살아 있는지. */
+    boolean linkAlive() {
+        return radio.privileged();
+    }
+
     private void halt(String why) {
         if (stopped) return;
         stopped = true;
@@ -220,11 +245,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
         if (timer != null) timer.cancel(false);
         if (ticker != null) ticker.cancel(false);
         if (watcher != null) {
-            try {
-                radio.tm().unregisterTelephonyCallback(watcher);
-            } catch (RuntimeException ignored) {
-                // 이미 풀렸으면 무시
-            }
+            radio.unwatch(watcher);
             watcher.shutdown(why);
         }
         rec("engine_halt", "why", why);
@@ -393,7 +414,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
             return Policy.Result.of(Policy.Kind.BLOCKED);
         }
         if (!radio.privileged()) {
-            problem = "다시 설정 필요";
+            problem = radio.lostText();
             rec("w_carrier", "why", why, "allowNr", allowNr, "result", "no_privilege");
             return Policy.Result.of(Policy.Kind.FAILED);
         }
@@ -447,9 +468,11 @@ final class Engine implements Policy.Env, Watcher.Listener {
         }
         if (ok) {
             setOwn(allowNr ? -1 : after); // 막았으면 실제로 남은 값(우리 값 또는 LTE_CA만 빠진 값)을 기억한다
-        } else if (!allowNr && CarrierPlan.hasNr(after)) {
-            setOwn(own); // 막기 실패: 선기록을 되돌린다
+        } else if (!allowNr && after >= 0 && CarrierPlan.hasNr(after)) {
+            setOwn(own); // 막기 실패(다시 읽어 5G 그대로 확인): 선기록을 되돌린다
         }
+        // 다시 읽지 못함(after < 0, 예: 쓰는 도중 Shizuku 통로가 끊김): 막혔는지 모르므로 선기록(목표값)을 둔다 —
+        // 통로가 돌아오면 정리(reconcile)가 실제 값을 읽어 5G 허용이면 기록만 지우고, 우리 막음이면 푼다(자가 점검과 같은 규칙)
         rec("w_carrier", "why", why, "allowNr", allowNr, "result", ok ? "ok" : "failed", "before", cur,
                 "target", target, "after", after);
         return Policy.Result.of(ok ? Policy.Kind.OK : Policy.Kind.FAILED, now());
@@ -503,7 +526,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
         halt("auto_off");
         worker.execute(() -> guarded("stopped", () -> {
             reconcile("stopped", false); // 엔진이 멈췄으니 우리 막음이 남아 있으면 푼다(통화 중이면 서비스의 재시도가 다시 부른다)
-            host.stopped();
+            host.stopped(this);
         }));
     }
 
@@ -602,9 +625,9 @@ final class Engine implements Policy.Env, Watcher.Listener {
         rec("lift", "why", why, "ok", ok, "before", c, "after", after);
         if (ok) {
             setOwn(-1);
-            if ("다시 설정 필요".equals(problem)) problem = null;
+            if (radio.lostText().equals(problem)) problem = null;
         } else if (!radio.privileged()) {
-            problem = "5G 막힘 · 다시 설정 필요";
+            problem = "5G 막힘 · " + radio.lostText();
         }
     }
 
@@ -841,13 +864,18 @@ final class Engine implements Policy.Env, Watcher.Listener {
                 tl.add(Timeline.Cat.JUDGE, "5G 막음 풀기를 통화 뒤로 미룸");
                 break;
             case "engine_start":
-                tl.add(Timeline.Cat.JUDGE, "자동 제어 시작");
+                tl.add(Timeline.Cat.JUDGE, "shizuku".equals(str(kv, "way")) ? "자동 제어 시작(Shizuku 방식)" : "자동 제어 시작");
                 break;
             case "engine_halt": {
                 String why = str(kv, "why");
-                tl.add(Timeline.Cat.JUDGE, "auto_off".equals(why) ? "자동 제어 멈춤(사용자가 끔)" : "자동 제어 멈춤(폰 꺼짐·앱 종료)");
+                tl.add(Timeline.Cat.JUDGE, "auto_off".equals(why) ? "자동 제어 멈춤(사용자가 끔)"
+                        : "link_lost".equals(why) ? "자동 제어 멈춤(Shizuku 통로 끊김 — 통로가 돌아오면 다시 시작)"
+                        : "자동 제어 멈춤(폰 꺼짐·앱 종료)");
                 break;
             }
+            case "watch_failed":
+                tl.add(Timeline.Cat.JUDGE, "5G 상태 보기를 시작하지 못함(쉬기 판단 안 함): " + str(kv, "msg"));
+                break;
             case "sim_block": {
                 String to = str(kv, "to");
                 tl.add(Timeline.Cat.JUDGE, "none".equals(to) ? "SIM 조건이 풀려 다시 바꿀 수 있음" : "바꿀 수 없음: " + Words.blocked(to));
@@ -951,7 +979,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
             s.done(false);
             return;
         }
-        s.line("5G/LTE 전환 권한: 있음", true);
+        s.line(radio.viaShizuku() ? "Shizuku 통로(도우미): 있음" : "5G/LTE 전환 권한: 있음", true);
         s.line("고른 모드: 5G 우선", true);
         long cur = radio.read(Radio.CARRIER);
         if (CarrierPlan.classify(cur, own()) != CarrierPlan.Carrier.OPEN) {
@@ -1008,7 +1036,7 @@ final class Engine implements Policy.Env, Watcher.Listener {
         if (last >= 0 && t - last < SELF_TEST_GAP_MS) {
             return "방금 점검했음(" + Words.mmss(SELF_TEST_GAP_MS - (t - last)) + " 뒤 다시)";
         }
-        if (!radio.privileged()) return "5G/LTE 전환 권한이 없음(처음 설정 필요)";
+        if (!radio.privileged()) return radio.noPathText();
         if (!CarrierPlan.hasNr(userMask)) return "LTE 우선이라 점검할 5G가 없음(5G 우선에서 해 주세요)";
         if (policy.state == Policy.State.COOLDOWN) return "지금 LTE로 쉬는 중이라 점검하지 않음";
         if (policy.state == Policy.State.PROBE) return "지금 5G 다시 확인 중이라 점검하지 않음";

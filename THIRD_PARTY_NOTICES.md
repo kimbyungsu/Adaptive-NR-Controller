@@ -5,7 +5,8 @@
 [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt) 에 있습니다.
 
 구성요소 구분:
-- **벤더링 바이너리**(`poc/shizuku/libs/*.jar`): §1 Shizuku, §2 AndroidHiddenApiBypass, §3 AndroidX Annotation
+- **벤더링 바이너리**(`poc/shizuku/libs/*.jar`, `phoneapp/libs/*.jar`): §1 Shizuku, §2 AndroidHiddenApiBypass(PoC만), §3 AndroidX Annotation
+- 제품 앱(phoneapp) 설치 파일에는 §1 Shizuku API 클래스가 들어가고, 이 고지문과 Apache-2.0 전문이 앱 안(assets)에 함께 담긴다(빌드가 복사).
 - **소스 이식**(phoneapp 내 Java로 옮긴 코드): §4 AOSP adb·libcrypto_utils, §5 BoringSSL SPAKE2
 - **공개 표준의 독자 구현**(제3자 코드 아님, 참고용 기재): §6
 
@@ -13,7 +14,8 @@
 
 ## 1. Shizuku API (shizuku-api, shizuku-aidl, shizuku-shared, shizuku-provider)
 
-- 포함 위치: `poc/shizuku/libs/shizuku-api.jar`, `shizuku-aidl.jar`, `shizuku-shared.jar`, `shizuku-provider.jar`
+- 포함 위치: `poc/shizuku/libs/` 및 `phoneapp/libs/`의 `shizuku-api.jar`, `shizuku-aidl.jar`, `shizuku-shared.jar`, `shizuku-provider.jar`
+  (제품 앱은 이 클래스를 설치 파일에 포함해 길 2 Shizuku 방식에 쓴다)
 - 프로젝트: RikkaApps/Shizuku-API — https://github.com/RikkaApps/Shizuku-API
 - 라이선스: MIT License
 
@@ -69,7 +71,7 @@ limitations under the License.
 
 ## 3. AndroidX Annotation (androidx.annotation)
 
-- 포함 위치: `poc/shizuku/libs/annotation.jar`
+- 포함 위치: `poc/shizuku/libs/annotation.jar`, `phoneapp/libs/annotation.jar` (컴파일에만 쓰고 설치 파일에는 넣지 않음)
 - 프로젝트: The Android Open Source Project — https://developer.android.com/jetpack/androidx/releases/annotation
 - 라이선스: Apache License, Version 2.0 (전문: [`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt))
 
