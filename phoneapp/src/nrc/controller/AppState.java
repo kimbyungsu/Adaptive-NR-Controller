@@ -28,7 +28,7 @@ final class AppState {
     static final String SETUP_RESULT = "setupResult";
     /**
      * 제어 방식 선택(DESIGN §5.16): WAY_AUTO(기본) = 통신사 인정(길 1) 우선, 등록 방식이 막힌 게 확인된 폰만 Shizuku(길 2).
-     * WAY_SHIZUKU = 늘 Shizuku로(개발 시험: 길 1이 되는 폰에서 길 2 흐름을 확인할 때, 앱 제목을 길게 눌러 고른다).
+     * WAY_SHIZUKU = 늘 Shizuku로(개발 시험: 길 1이 되는 폰에서 길 2 흐름을 확인할 때, [설정] 칸의 '제어 방식 바꾸기 (시험용)' 버튼으로 고른다).
      */
     static final String WAY = "way";
     static final String WAY_AUTO = "auto";

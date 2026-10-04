@@ -12,7 +12,7 @@ public final class NowTextTest {
 
         // 판단이 꺼져 있음: 타일 글이 머리글, 남은 막음이 없을 때만 순정
         NowText t = NowText.of(null, off, now, false, false);
-        is(t.headline.equals("자동 제어 꺼짐") && t.next.contains("타일을 한 번 탭"), "꺼짐");
+        is(t.headline.equals("자동 제어 꺼짐") && t.next.contains("[자동 제어 켜기]"), "꺼짐");
         is(has(t, "순정(폰 기본 동작)"), "남은 막음 없음 = 순정");
         t = NowText.of(null, off, now, true, false);
         is(has(t, "5G 막음이 아직 남아") && !has(t, "순정(폰") && t.next.contains("막음이 풀리면"), "남은 막음");
@@ -22,8 +22,8 @@ public final class NowTextTest {
         // Shizuku 방식에서 통로(도우미)가 없음: 남은 막음을 "30초마다 풂"이라고 하지 않고 '지금 못 바꿈'을 정직히
         TileText shzOff = TileText.of(true, "5G 막힘 · Shizuku 꺼짐", TileText.MODE_NR, false, null, true, false);
         t = NowText.of(null, shzOff, now, true, false, true);
-        is(has(t, "통로(Shizuku)가 없어") && !has(t, "30초마다") && has(t, "문제: 5G 막힘 · Shizuku 꺼짐")
-                && t.next.contains("Shizuku 통로가 돌아오면"), "Shizuku 통로 없음·남은 막음");
+        is(has(t, "Shizuku와 연결돼 있지 않아") && !has(t, "30초마다") && has(t, "문제: 5G 막힘 · Shizuku 꺼짐")
+                && t.next.contains("Shizuku 방식 준비"), "Shizuku 통로 없음·남은 막음");
         t = NowText.of(null, TileText.of(true, "Shizuku 꺼짐", TileText.MODE_NR, false, null, true, false), now, false, false, true);
         is(!has(t, "남아 있을 수") && !has(t, "순정(폰") && has(t, "문제: Shizuku 꺼짐"), "Shizuku 통로 없음·남은 막음 없음");
 

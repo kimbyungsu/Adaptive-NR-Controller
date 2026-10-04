@@ -66,11 +66,13 @@ public final class MainActivity extends Activity implements SharedPreferences.On
     private Button liftButton;
     private Button setupButton;
     private TextView liftOut;
+    private Button autoOnButton;
     // Shizuku 방식(길 2) 안내: 그 길을 쓸 때만 보인다
     private LinearLayout shzBox;
     private TextView shzLines;
-    private Button shzApprove;
-    private Button shzOpen;
+    private Button shzAction;
+    private TextView shzNote;
+    private Button wayButton;
     private Boolean bootStartCache;
     private long bootStartAt = -1;
     private SpannableStringBuilder selfTestText = new SpannableStringBuilder();
@@ -93,12 +95,9 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         title.setText("5G 자동 제어");
         title.setTextSize(20);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        // 개발 시험: 제목을 길게 누르면 제어 방식(자동 / Shizuku로 시험)을 고른다. 일반 사용자는 고를 일이 없다(§5.16)
-        title.setOnLongClickListener(v -> {
-            chooseWay();
-            return true;
-        });
         root.addView(title);
+        // 폰이 기본으로 붙이는 위쪽 띠에도 같은 앱 이름이 나와 이름이 두 번 보였다(사용자 혼란, 2026-10-05) → 띠를 숨기고 이 제목 하나만 둔다
+        if (getActionBar() != null) getActionBar().hide();
         LinearLayout tabRow = new LinearLayout(this);
         tabRow.setOrientation(LinearLayout.HORIZONTAL);
         for (int i = 0; i < TAB_NAMES.length; i++) {
@@ -200,24 +199,27 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         nowNext = text("", 15);
         nowNext.setTypeface(Typeface.DEFAULT_BOLD);
         body.addView(nowNext);
+        // 자동 제어가 꺼져 있으면 여기서 바로 켠다(타일을 찾지 않아도 되게)
+        autoOnButton = button("자동 제어 켜기", v -> {
+            AppState.setAuto(this, true);
+            ControllerService.ensure(this);
+            render();
+        });
+        body.addView(autoOnButton);
         liftButton = button("남은 5G 막음 풀기", v -> confirmLiftExternal());
         body.addView(liftButton);
         liftOut = text("", 14);
         body.addView(liftOut);
+        // Shizuku 방식 준비: 단계 목록(✓ 끝남 / ▶ 지금 할 차례 / · 아직) + 지금 할 일 버튼 하나
         shzBox = new LinearLayout(this);
         shzBox.setOrientation(LinearLayout.VERTICAL);
-        shzBox.addView(section("Shizuku 방식"));
-        shzLines = text("", 14);
+        shzBox.addView(section("Shizuku 방식 준비"));
+        shzLines = text("", 16);
         shzBox.addView(shzLines);
-        shzApprove = button("Shizuku 사용 승인 요청", v -> {
-            if (!Shz.get(this).requestPermission()) shzLines.append("\n(Shizuku가 꺼져 있어 승인 창을 띄울 수 없어요. 먼저 Shizuku를 켜 주세요.)");
-        });
-        shzBox.addView(shzApprove);
-        shzOpen = button("Shizuku 앱 열기", v -> {
-            Intent i = Shz.get(this).managerIntent();
-            if (i != null) startActivity(i);
-        });
-        shzBox.addView(shzOpen);
+        shzAction = button("", v -> shzActionClicked());
+        shzBox.addView(shzAction);
+        shzNote = text("", 13);
+        shzBox.addView(shzNote);
         body.addView(shzBox);
         body.addView(section("오늘의 활동(자정부터)"));
         today = text("", 15);
@@ -256,6 +258,8 @@ public final class MainActivity extends Activity implements SharedPreferences.On
             render();
         });
         body.addView(autoButton);
+        wayButton = button("", v -> chooseWay());
+        body.addView(wayButton);
         body.addView(button("시작하기 다시 보기(처음 설정·마무리)", v -> startActivity(new Intent(this, SetupActivity.class))));
         body.addView(button("이 폰에서 되는지 점검·결과 보내기", v -> showSupportReport()));
         body.addView(button("빠른 설정 패널에 '5G 자동' 타일 추가", v -> requestTile()));
@@ -309,83 +313,131 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         for (String s : t.lines) sb.append("· ").append(s).append('\n');
         nowLines.setText(sb.toString().trim());
         nowNext.setText("다음: " + t.next);
+        autoOnButton.setVisibility(AppState.auto(this) ? View.GONE : View.VISIBLE);
+        liftOut.setVisibility(liftOut.getText().length() == 0 ? View.GONE : View.VISIBLE); // 빈 줄이 자리만 차지하지 않게
         today.setText(todayText());
         selfTestButton.setEnabled(!selfTestRunning);
     }
 
     /**
-     * Shizuku 방식 안내(DESIGN §5.16 '알려주기 + 천천히 안내'): 그 길을 쓸 때만 보인다. 단계마다 지금 상태와, 사용자가 할 일 /
-     * 앱이 스스로 하는 일을 나눠 적는다. 재부팅 뒤 이어지는 조건과 마지막 끊김(언제·왜·그때 상황)도 보인다.
+     * Shizuku 방식 준비 칸(DESIGN §5.16 '알려주기 + 천천히 안내'). 그 길을 쓸 때만 보인다.
+     * 사람이 보기 쉽게(2026-10-05 사용자 지적): 단계 목록(✓ 끝남 / ▶ 지금 할 차례 / · 아직)과 지금 할 일 버튼 하나만 크게.
+     * 재부팅 뒤 이어지는 조건과 마지막 끊김은 아래 작은 글씨로.
      */
     private void renderShz(boolean viaShz) {
         shzBox.setVisibility(viaShz ? View.VISIBLE : View.GONE);
         if (!viaShz) return;
         Shz z = Shz.get(this);
         Shz.State s = z.state();
-        boolean installed = s != Shz.State.ABSENT;
         boolean host = z.hostAlive();
+        boolean installed = s != Shz.State.ABSENT;
+        boolean running = host || (installed && s != Shz.State.NOT_RUNNING);
+        boolean approved = host || s == Shz.State.READY;
         long nowUp = SystemClock.elapsedRealtime();
         if (bootStartAt < 0 || nowUp - bootStartAt > 5_000) {
             bootStartCache = z.bootStart();
             bootStartAt = nowUp;
         }
+        // 지금 할 차례 = 아직 안 끝난 첫 단계(0 = 모두 끝남)
+        int next = !installed ? 1 : !running ? 2 : !approved ? 3 : !host ? 4 : 0;
         StringBuilder b = new StringBuilder();
-        b.append(AppState.WAY_SHIZUKU.equals(AppState.way(this)) ? "시험으로 고른 방식이에요. " : "이 폰은 등록 방식이 막혀 이 방식을 써요. ")
-                .append("앱이 통신사 인정 없이, Shizuku가 띄워 준 앱의 도우미를 통해 5G/LTE를 바꿔요.\n\n");
-        b.append("① Shizuku 앱: ").append(installed ? "설치됨" : "설치 안 됨").append('\n');
-        b.append("② Shizuku 실행: ").append(!installed ? "-" : s == Shz.State.NOT_RUNNING ? "꺼져 있음" : "켜져 있음").append('\n');
-        b.append("③ 이 앱 사용 승인: ").append(s == Shz.State.READY ? "됨" : s == Shz.State.DENIED ? "거절됨"
-                : s == Shz.State.NO_APPROVAL ? "아직 안 됨" : "-").append('\n');
+        step(b, 1, next, "Shizuku 앱 설치", installed ? "설치돼 있어요" : "아직 없어요");
+        step(b, 2, next, "Shizuku 켜기", s == Shz.State.NOT_RUNNING && host ? "꺼졌지만 앱의 도우미가 살아 있어 계속 돼요"
+                : running ? "켜져 있어요" : "꺼져 있어요");
+        step(b, 3, next, "이 앱이 Shizuku를 쓰도록 허락", approved ? "허락돼 있어요"
+                : s == Shz.State.DENIED ? "전에 거절됐어요" : s == Shz.State.OLD ? "Shizuku가 너무 옛 버전이에요" : "아직이에요");
         long up = z.upSinceWall();
-        b.append("④ 앱의 도우미(제어 통로): ").append(host ? "연결됨" + (up > 0 ? " · " + NowText.clock(up) + "부터" : "") : "연결 안 됨").append('\n');
-        b.append("⑤ 재부팅 뒤 Shizuku 스스로 켜기(Shizuku 설정의 '부팅 시 시작'): ")
-                .append(bootStartCache == null ? "모름" : bootStartCache ? "켜짐" : "꺼짐").append("\n\n");
-        b.append("지금: ").append(shzGuide(s, host)).append("\n\n");
-        b.append("재부팅 뒤(안드로이드 13 이상): ⑤가 '켜짐'이고, 그 Wi-Fi에서 무선 디버깅을 처음 허락할 때 '이 네트워크에서 항상 허용'에 "
-                + "체크했고, 폰이 켜지는 그때 그 Wi-Fi에 붙어 있으면 Shizuku가 스스로 켜지기를 시도해요(Shizuku 13.6.0 공개 소스 기준 — "
-                + "이 앱의 재부팅 이어받기는 아직 실제 폰 시험 전이에요). Shizuku가 켜져 통로가 연결되면, 앱은 사용자가 누를 것 없이 이어서 해요. "
-                + "Shizuku가 켜지지 않으면(예: Wi-Fi 없는 곳에서 재부팅) 사용자가 Wi-Fi에 붙은 뒤 Shizuku 앱에서 [시작]을 한 번 눌러야 하고, "
-                + "그 전까지 앱은 '지금 못 바꿈'을 보여 줘요.");
-        String loss = z.lastLoss();
-        if (loss != null) b.append("\n\n마지막 통로 끊김: ").append(loss);
-        String sh = z.lastShizuku();
-        if (sh != null) b.append("\n마지막 Shizuku 변화: ").append(sh);
-        b.append("\n(끊김·다시 연결·재부팅 기록은 [활동 기록] 칸에도 남아요.)");
+        step(b, 4, next, "앱과 Shizuku 연결", host ? "연결됐어요" + (up > 0 ? " (" + NowText.clock(up) + "부터)" : "")
+                : approved ? "앱이 스스로 연결하는 중이에요" : "허락하면 앱이 스스로 연결해요");
+        b.append('\n').append(next == 0 ? "준비 끝 — 앱이 Shizuku로 5G/LTE를 바꿀 수 있어요." : "지금 할 일: " + shzTodo(s, next));
         shzLines.setText(b.toString());
-        shzApprove.setVisibility(s == Shz.State.NO_APPROVAL ? View.VISIBLE : View.GONE);
-        shzOpen.setVisibility(installed ? View.VISIBLE : View.GONE);
+        shzActionCode = shzActionFor(s, next);
+        shzAction.setText(shzActionCode == SHZ_INSTALL ? "Shizuku 설치 페이지 열기"
+                : shzActionCode == SHZ_OPEN ? "Shizuku 앱 열기" : shzActionCode == SHZ_ALLOW ? "허락하기" : "");
+        shzAction.setVisibility(shzActionCode == 0 ? View.GONE : View.VISIBLE);
+        StringBuilder n = new StringBuilder();
+        n.append("재부팅 뒤 Shizuku 스스로 켜기(Shizuku 설정의 '부팅 시 시작'): ")
+                .append(bootStartCache == null ? "모름" : bootStartCache ? "켜짐" : "꺼짐").append('\n');
+        n.append("안드로이드 13 이상에서(Shizuku 13.6.0 공개 소스 기준), 이게 켜져 있고, 처음 무선 디버깅을 허락할 때 '이 네트워크에서 항상 허용'에 체크했고, 폰이 켜질 때 그 Wi-Fi에 붙어 있으면 "
+                + "Shizuku가 스스로 켜지기를 시도해요(아직 실제 폰 시험 전). 안 켜지면 Wi-Fi에 붙은 뒤 Shizuku 앱에서 [시작]을 한 번 누르면 되고, "
+                + "그 뒤는 이 앱이 알아서 이어 가요.");
+        String loss = z.lastLoss();
+        if (loss != null) n.append("\n마지막 끊김: ").append(loss);
+        n.append("\n(끊김·다시 연결·재부팅은 [활동 기록]에도 남아요.)");
+        shzNote.setText(n.toString());
     }
 
-    private static String shzGuide(Shz.State s, boolean host) {
-        switch (s) {
-            case ABSENT:
-                return "사용자가 할 일: Shizuku 앱을 먼저 설치해 주세요(공식 Shizuku).";
-            case NOT_RUNNING:
-                return host ? "Shizuku는 꺼졌지만 앱의 도우미가 아직 살아 있어 제어는 계속돼요."
-                        : "Shizuku가 꺼져 있어 지금은 앱이 5G/LTE를 못 바꿔요. 사용자가 할 일: Wi-Fi에 연결 → [Shizuku 앱 열기] → "
-                        + "'무선 디버깅으로 시작'의 [시작]. 켜지면 앱이 스스로 이어서 해요(이 화면에서 더 누를 것 없음).";
-            case OLD:
-                return "사용자가 할 일: Shizuku를 최신 버전으로 업데이트해 주세요.";
-            case NO_APPROVAL:
-                return "사용자가 할 일: 아래 [Shizuku 사용 승인 요청]을 누르고, 뜨는 창에서 '허용'을 눌러 주세요.";
-            case DENIED:
-                return "전에 거절해서 승인 창이 다시 안 뜰 수 있어요. 사용자가 할 일: [Shizuku 앱 열기] → 승인된 앱 목록에서 '5G 자동 제어'를 켜 주세요.";
+    private static final int SHZ_INSTALL = 1, SHZ_OPEN = 2, SHZ_ALLOW = 3;
+    private int shzActionCode;
+
+    private static void step(StringBuilder b, int no, int next, String what, String state) {
+        b.append(next == 0 || no < next ? "✓ " : no == next ? "▶ " : "· ").append(no).append(". ").append(what)
+                .append(" — ").append(state).append('\n');
+    }
+
+    /** 지금 할 차례 단계에서 사용자가 할 일(한두 문장, 누를 곳 이름 그대로). */
+    private static String shzTodo(Shz.State s, int next) {
+        switch (next) {
+            case 1:
+                return "아래 [Shizuku 설치 페이지 열기]를 눌러 Shizuku를 설치해 주세요. 설치하면 이 칸이 저절로 다음 단계로 넘어가요.";
+            case 2:
+                return "Wi-Fi에 연결한 뒤, 아래 [Shizuku 앱 열기]를 누르고 Shizuku 화면의 '무선 디버깅으로 시작'에서 [시작]을 눌러 주세요. "
+                        + "켜지면 이 칸이 저절로 다음 단계로 넘어가요.";
+            case 3:
+                if (s == Shz.State.OLD) return "아래 [Shizuku 설치 페이지 열기]에서 Shizuku를 최신 버전으로 업데이트해 주세요.";
+                if (s == Shz.State.DENIED) return "아래 [Shizuku 앱 열기]를 누르고, Shizuku의 승인된 앱 목록에서 '5G 자동 제어'를 켜 주세요.";
+                return "아래 [허락하기]를 누르고, 뜨는 창에서 '허용'을 눌러 주세요.";
             default:
-                return host ? "정상 — 앱이 Shizuku 통로로 5G/LTE를 바꿀 수 있어요." : "앱이 도우미를 붙이는 중이에요(몇 초, 누를 것 없음).";
+                return "몇 초만 기다려 주세요. 누를 것은 없어요.";
         }
     }
 
-    /** 개발 시험: 제어 방식 고르기(제목 길게 누르기). 바꾸면 서비스가 지금 엔진을 정리하고 새 방식으로 다시 시작한다. */
+    private static int shzActionFor(Shz.State s, int next) {
+        switch (next) {
+            case 1:
+                return SHZ_INSTALL;
+            case 2:
+                return SHZ_OPEN;
+            case 3:
+                return s == Shz.State.OLD ? SHZ_INSTALL : s == Shz.State.DENIED ? SHZ_OPEN : SHZ_ALLOW;
+            default:
+                return 0;
+        }
+    }
+
+    private void shzActionClicked() {
+        Shz z = Shz.get(this);
+        if (shzActionCode == SHZ_ALLOW) {
+            if (!z.requestPermission()) {
+                android.widget.Toast.makeText(this, "Shizuku가 꺼져 있어 허락 창을 띄울 수 없어요. 먼저 Shizuku를 켜 주세요.",
+                        android.widget.Toast.LENGTH_LONG).show();
+            }
+        } else if (shzActionCode == SHZ_OPEN) {
+            Intent i = z.managerIntent();
+            if (i != null) startActivity(i);
+        } else if (shzActionCode == SHZ_INSTALL) {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + Shz.MANAGER)));
+            } catch (RuntimeException e) {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + Shz.MANAGER)));
+            }
+        }
+    }
+
+    /**
+     * 시험용: 제어 방식 바꾸기([설정] 칸의 버튼). 바꾸면 서비스가 지금 엔진을 정리하고 새 방식으로 다시 시작한다.
+     * Shizuku로 바꾸면 바로 [지금] 칸으로 옮겨 준비 단계를 보여 준다.
+     */
     private void chooseWay() {
-        String[] names = {"자동(통신사 인정 우선 — 기본)", "Shizuku 방식으로 시험"};
+        String[] names = {"자동 — 통신사 인정 방식 먼저(보통은 이것)", "Shizuku 방식으로 시험"};
         int cur = AppState.WAY_SHIZUKU.equals(AppState.way(this)) ? 1 : 0;
         new AlertDialog.Builder(this)
-                .setTitle("개발 시험: 제어 방식")
+                .setTitle("제어 방식 바꾸기 (시험용)")
                 .setSingleChoiceItems(names, cur, (dlg, which) -> {
                     AppState.setWay(this, which == 1 ? AppState.WAY_SHIZUKU : AppState.WAY_AUTO);
                     ControllerService.ensure(this);
                     dlg.dismiss();
-                    render();
+                    show(TAB_NOW);
                 })
                 .setNegativeButton("닫기", null)
                 .show();
@@ -506,6 +558,8 @@ public final class MainActivity extends Activity implements SharedPreferences.On
                 + "\n5G/LTE 전환 권한: " + path
                 + "\n배터리 최적화 제외: " + (exempt ? "예" : "아니요"));
         autoButton.setText(AppState.auto(this) ? "자동 제어 끄기" : "자동 제어 켜기");
+        wayButton.setText("제어 방식 바꾸기 (시험용) — 지금: "
+                + (AppState.WAY_SHIZUKU.equals(AppState.way(this)) ? "Shizuku로 시험" : "자동"));
     }
 
     private static String mask(long m) {
