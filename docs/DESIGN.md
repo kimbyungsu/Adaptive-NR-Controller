@@ -891,6 +891,10 @@ OBSERVE  ──(제어 불가 조건이 모두 해소됨, 예: S 확보 후 새 
 
 **이 폰(노트20U) 실측(2026-10-05, USB 셸=Shizuku 신분) — 관찰까지, 과확대 금지.** ① `setprop persist.adb.tcp.port`·`service.adb.tcp.port` 둘 다 "Failed to set property"(readback 빈값) → **이 폰 셸은 setprop으로 adb TCP 포트를 못 심음**(다른 TCP 구성 경로·adb 프로토콜 tcpip까지 판정한 것은 아님). ② `dumpsys account` 매칭 21(계정 존재)·`dpm list-owners`는 User 150(Secure Folder) Knox Profile/ManagedProfileOwner만·User 0엔 Device Owner 없음 → **Device Owner 설정을 제약할 조건이 관찰됨**(실제 `set-device-owner` 거부·정확한 원인은 미시험). DO 자격만으로 NR 제어 권한이 생기지 않는다는 AOSP 근거(PhoneInterfaceManager·TelephonyPermissions)는 유지. **이 결과로 비루트 자동 복구 전체의 불가능을 확정하지 않는다.**
 
+**제품 관점 정정 (2026-10-05 사용자 지적 — Device Owner 경로를 제품 후보에서 제외).** "계정 없는/초기화 기기에서 Device Owner PoC"는 **제품으로는 성립하지 않는다**: (1) Device Owner 설정은 계정 없는 상태(사실상 초기화)를 요구하는데, **일반 사용자가 배터리 도구 하나 쓰려고 폰을 초기화하지 않는다** → 시작 자체가 안 됨. (2) 설정에 성공해도 소스상 NR 제어 권한이 없다(위 AOSP 근거). (3) 이 벽들은 특정 폰 결함이 아니라 플랫폼/권한 모델 수준이라 **다른 폰에서 달라질 가능성이 낮다**(OEM 차이는 있을 수 있으나 핵심 권한 검사는 공통). → 따라서 Device Owner는 기술 PoC 결과와 무관하게 제품 경로에서 뺀다.
+
+**제품 수준 결론(현 근거, 과확대 금지).** 재부팅·Wi-Fi·PC·사용자 조작·초기화 없이 비-USER 사유로 NR을 제어하는, **일반 사용자가 시작할 수 있는 비루트 경로로 현재 확인된 것은 통신사 권한(길 1)뿐**이다(앱에 영속·관문 B 실측). 다른 후보는 모두 제품 조건에서 탈락: 무선 디버깅=Wi-Fi 필요, 영속 TCP=루트/또는 셸로 못 심음(이 폰 실측), Device Owner=초기화 요구+권한 없음. **그러므로 길 1이 막힌 폰은 "루팅하면 가능 / 루팅 안 하면 제품-성립 경로 없음(플랫폼 제약)"으로 좁혀진다.** 이는 요구를 낮춘 게 아니라 경로를 모두 짚은 결과이며, "모든 가능한 메커니즘의 형식적 불가능 증명"은 아니다(패치 실기기·미조사 OEM 경로는 여전히 열림). 검증 순서 교훈: **cold-boot 생존(통로/권한의 재부팅 영속)은 아키텍처 초기에 먼저 판정했어야 했다 — Shizuku(길 2)는 이 핵심 요구를 충족하지 못하므로 완전 자동 백엔드로 제시하지 않는다.**
+
 **근거 소스(2026-10-05 조회).** ShizukuPlus README(모드별 start-on-boot=Wireless Debugging/Root), 공식 Shizuku v13.6.0 `BootCompleteReceiver`(조건부 부팅 adbStart), Dhizuku/Dhizuku-API(Device Owner 공유·일반 binder 중계·공개 표면 최소), AOSP `PhoneInterfaceManager`·`TelephonyPermissions`(`setAllowedNetworkTypesForReason`=MODIFY_PHONE_STATE 또는 통신사 권한, DO 우회 없음), AOSP `AdbDebuggingManager`(무선 디버깅 Wi-Fi 연결 검사), AOSP UICC carrier privileges, 삼성 One UI adb_wifi 재부팅 0·`adb tcpip` 세션 한정·persist는 build.prop, adb-wifi-restore(WRITE_SECURE_SETTINGS·mDNS 서브넷 한계·EMUI 무선 adbd Wi-Fi 바인딩·보안 잠금 첫 해제 필요).
 
 ---
