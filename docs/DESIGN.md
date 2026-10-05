@@ -900,7 +900,18 @@ OBSERVE  ──(제어 불가 조건이 모두 해소됨, 예: S 확보 후 새 
 - **Shizuku(길 2):** 현재 구현·시험본은 관문 A·A′(Wi-Fi 없는 재부팅 자동 복구·종료 전 해제)를 충족하지 못하므로 **완전 자동 백엔드로 안내하지 않는다**(§5.15·§5.17). 이를 모든 Shizuku 파생 경로의 영구 불가능으로 확대하지 않는다.
 - **교훈:** cold-boot 생존(통로/권한의 재부팅 영속)은 아키텍처 초기에 먼저 판정했어야 했다.
 
-**근거 소스(2026-10-05 조회).** ShizukuPlus README(모드별 start-on-boot=Wireless Debugging/Root), 공식 Shizuku v13.6.0 `BootCompleteReceiver`(조건부 부팅 adbStart), Dhizuku/Dhizuku-API(Device Owner 공유·일반 binder 중계·공개 표면 최소), AOSP `PhoneInterfaceManager`·`TelephonyPermissions`(`setAllowedNetworkTypesForReason`=MODIFY_PHONE_STATE 또는 통신사 권한, DO 우회 없음), AOSP `AdbDebuggingManager`(무선 디버깅 Wi-Fi 연결 검사), AOSP UICC carrier privileges, 삼성 One UI adb_wifi 재부팅 0·`adb tcpip` 세션 한정·persist는 build.prop, adb-wifi-restore(WRITE_SECURE_SETTINGS·mDNS 서브넷 한계·EMUI 무선 adbd Wi-Fi 바인딩·보안 잠금 첫 해제 필요).
+**길 3(루트) 경로 분석 (2026-10-05 조사 — 미구현·실기기 검증 전).** 루팅 폰에서는 재부팅 뒤 Wi-Fi·조작·PC 없이 영속 특권이 성립할 가능성이 높다. 두 형태:
+- **(ㄱ) Sui / Shizuku 루트 모드:** Magisk 기반으로 Shizuku를 **부팅 시 루트로** 띄움(ShizukuPlus README의 Root mode = start-on-boot ✓·Persistent). 그러면 **우리 앱의 기존 길 2 코드가 그대로 붙어** 완전 자동이 된다 → 추가 구현이 가장 적다.
+- **(ㄴ) Magisk 모듈/부팅 스크립트:** 부팅 시 루트로 비-USER 사유 allowed-network-types를 직접 설정(5G/네트워크 제어 Magisk 모듈 다수 선례). 단 판단 엔진을 쓰려면 로직 이식이 필요.
+- **한계·전제:** 루팅 폰에 한함(일반 사용자 대상 아님), A·A′(재기동·복구·종료 안전)는 **미판정**, 루팅 실기기로만 검증 가능. "루팅하면 해결"로 확정하지 않고 **후보로 설계**한다.
+
+**사용자 제시 비루트 아이디어 조사 결과 (2026-10-05, cold-boot 벽을 깨는지만 판정).**
+- **배경화면 앱 / Automate "Shizuku Keeper":** 라이브 배경화면 서비스·자동화로 **살아 있는 동안** Shizuku를 keep-alive·끊김 복구하는 용도. 그러나 **부팅 뒤 TCP/IP 초기화에 Wi-Fi가 짧게 필요** → 모바일 데이터만의 cold boot는 못 넘긴다(출처: Automate Shizuku Keeper 설명). 즉 '재부팅 뒤 되살리기'가 아니라 '떠 있을 때 유지'다.
+- **작업 프로필(Island/Shelter, Profile Owner):** `dpm set-profile-owner`로 **계정 삭제 없이** 설정 가능(Device Owner와 달리 초기화 불필요)하나, Profile Owner는 작업 프로필 범위 권한이라 **기기 전체 NR 제어 권한이 없다**(Device Owner보다 약함) → NR 제어 불가. (Android 14는 set-profile-owner의 --name 제거.)
+- **(미취득) ChatGPT 대화의 구체 방법·'다른 폰 기본 활성화 기능'·기타 오픈소스:** 공유 링크 본문이 JS 렌더라 못 읽음 → 사용자 텍스트 붙여넣기 필요(그 구체안은 미조사).
+- 소결: 조사한 두 비루트 아이디어는 cold-boot 벽을 깨지 못함(배경화면=부팅 시 Wi-Fi 필요, 작업 프로필=NR 권한 없음). 루트(길 3)는 깰 수 있음(루팅 폰 한정).
+
+**근거 소스(2026-10-05 조회).** ShizukuPlus README(모드별 start-on-boot=Wireless Debugging/Root), 공식 Shizuku v13.6.0 `BootCompleteReceiver`(조건부 부팅 adbStart), Dhizuku/Dhizuku-API(Device Owner 공유·일반 binder 중계·공개 표면 최소), AOSP `PhoneInterfaceManager`·`TelephonyPermissions`(`setAllowedNetworkTypesForReason`=MODIFY_PHONE_STATE 또는 통신사 권한, DO 우회 없음), AOSP `AdbDebuggingManager`(무선 디버깅 Wi-Fi 연결 검사), AOSP UICC carrier privileges, 삼성 One UI adb_wifi 재부팅 0·`adb tcpip` 세션 한정·persist는 build.prop, adb-wifi-restore(WRITE_SECURE_SETTINGS·mDNS 서브넷 한계·EMUI 무선 adbd Wi-Fi 바인딩·보안 잠금 첫 해제 필요), Magisk 5G/네트워크 모듈(부팅 시 루트 설정·XDA/magiskmodule), Automate "Shizuku Keeper"(부팅 TCP/IP 초기화에 Wi-Fi 필요), Island/Shelter(작업 프로필 Profile Owner·set-profile-owner).
 
 ---
 
