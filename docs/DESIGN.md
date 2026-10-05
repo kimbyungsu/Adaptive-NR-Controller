@@ -900,16 +900,17 @@ OBSERVE  ──(제어 불가 조건이 모두 해소됨, 예: S 확보 후 새 
 - **Shizuku(길 2):** 현재 구현·시험본은 관문 A·A′(Wi-Fi 없는 재부팅 자동 복구·종료 전 해제)를 충족하지 못하므로 **완전 자동 백엔드로 안내하지 않는다**(§5.15·§5.17). 이를 모든 Shizuku 파생 경로의 영구 불가능으로 확대하지 않는다.
 - **교훈:** cold-boot 생존(통로/권한의 재부팅 영속)은 아키텍처 초기에 먼저 판정했어야 했다.
 
-**길 3(루트) 경로 분석 (2026-10-05 조사 — 미구현·실기기 검증 전).** 루팅 폰에서는 재부팅 뒤 Wi-Fi·조작·PC 없이 영속 특권이 성립할 가능성이 높다. 두 형태:
-- **(ㄱ) Sui / Shizuku 루트 모드:** Magisk 기반으로 Shizuku를 **부팅 시 루트로** 띄움(ShizukuPlus README의 Root mode = start-on-boot ✓·Persistent). 그러면 **우리 앱의 기존 길 2 코드가 그대로 붙어** 완전 자동이 된다 → 추가 구현이 가장 적다.
-- **(ㄴ) Magisk 모듈/부팅 스크립트:** 부팅 시 루트로 비-USER 사유 allowed-network-types를 직접 설정(5G/네트워크 제어 Magisk 모듈 다수 선례). 단 판단 엔진을 쓰려면 로직 이식이 필요.
-- **한계·전제:** 루팅 폰에 한함(일반 사용자 대상 아님), A·A′(재기동·복구·종료 안전)는 **미판정**, 루팅 실기기로만 검증 가능. "루팅하면 해결"로 확정하지 않고 **후보로 설계**한다.
+**길 3(루트) 경로 분석 (2026-10-05 조사 — 미구현·실기기 검증 전).** 루팅 폰에서는 재부팅 뒤 Wi-Fi·조작·PC 없이 특권 프로세스 기동이 성립할 수 있다(소스 확인: 공식 Shizuku v13.6.0 `BootCompleteReceiver`의 ROOT 분기 `rootStart()`에는 Wi-Fi 검사가 없음). 두 형태(구조가 다름):
+- **(ㄱ) Sui (Magisk):** Magisk가 띄운 루트 프로세스가 **Shizuku-API를 구현한 서버**를 제공. 공식 Shizuku-API는 root(uid 0)·shell(uid 2000) UserService를 모두 지원하고 `ShizukuProvider`가 v12.1.0+부터 Sui 초기화도 자동 수행 → **우리 앱의 기존 Shizuku API 연동을 재사용할 유력한 후보**다.
+- **(ㄴ) Shizuku 루트 모드:** 공식 Shizuku 앱이 부팅 수신기에서 루트 셸로 서버를 시작(마지막 실행 방식 ROOT·루트 허용 등 조건).
+- **(ㄷ) Magisk 모듈/부팅 스크립트:** 부팅 단계 `service.sh`/`service.d`에서 루트로 네트워크 설정 적용(공개 선례 있음 — 예: Pixel-Magisk-IMS가 부팅 뒤 `app_process`로 통신사 설정 적용. 단 그 주동작은 `overrideConfig`이고 직접 쓰기는 USER 사유라, **CARRIER 비-USER 제어 구현은 별도 설계·검증 대상**).
+- **미확인(과확대 금지):** 우리 기존 코드의 **루트 신분 동작**은 미확인이다 — 현재 전화 접근은 `ShellContext`(com.android.shell 위장)를 쓰는데, 루트(uid 0) 신분에서의 관측·CARRIER 쓰기·복구·종료 전 해제가 되는지 자료로 확인되지 않음. 관문 A(도우미·자동 제어 재개)·A′(종료 전 CARRIER 막음 해제)도 **미판정**. 루팅 폰 한정(일반 사용자 대상 아님)·루팅 실기기로만 검증. **"루팅하면 해결"로 확정하지 않고, 기존 연동 재사용 가능성이 있어 우선 검토할 후보로 설계**한다.
 
 **사용자 제시 비루트 아이디어 조사 결과 (2026-10-05, cold-boot 벽을 깨는지만 판정).**
-- **배경화면 앱 / Automate "Shizuku Keeper":** 라이브 배경화면 서비스·자동화로 **살아 있는 동안** Shizuku를 keep-alive·끊김 복구하는 용도. 그러나 **부팅 뒤 TCP/IP 초기화에 Wi-Fi가 짧게 필요** → 모바일 데이터만의 cold boot는 못 넘긴다(출처: Automate Shizuku Keeper 설명). 즉 '재부팅 뒤 되살리기'가 아니라 '떠 있을 때 유지'다.
-- **작업 프로필(Island/Shelter, Profile Owner):** `dpm set-profile-owner`로 **계정 삭제 없이** 설정 가능(Device Owner와 달리 초기화 불필요)하나, Profile Owner는 작업 프로필 범위 권한이라 **기기 전체 NR 제어 권한이 없다**(Device Owner보다 약함) → NR 제어 불가. (Android 14는 set-profile-owner의 --name 제거.)
+- **Automate "Shizuku Keeper"(자동화):** **부팅 후 복구와 실행 중 재연결을 지원**한다(저자 설명: 서비스 중단 감지·복구, 시스템 시작 시 실행). 다만 **부팅 때 TCP/IP 초기화에 짧은 Wi-Fi가 필요** → 모바일 데이터만의 cold boot는 못 넘긴다. 이건 Automate 흐름의 설명이고, **특정 '배경화면 앱'의 구현·모든 배경화면 방식의 부팅 조건까지 입증하는 건 아니다**(그 구체안은 소스 미확인).
+- **작업 프로필(Island/Shelter, Profile Owner):** 설정 조건은 경우에 따라 다르다 — **새 작업 프로필 생성**은 부모 사용자 계정을 보존한 채 가능하나, **기존 주 사용자(user 0)에 Profile Owner 지정**은 계정 제거 안내가 있다(명령 자체가 계정 제약을 없애는 건 아님). 더 중요한 건 **Profile Owner 자격만으로는 기기 전체 NR 제어 권한이 생기지 않는다**(AOSP `PhoneInterfaceManager`/`TelephonyPermissions`의 권한 검사에 PO/DO 우회 분기 없음) → NR 제어 불가. (Android 14는 set-profile-owner의 --name 제거.)
 - **(미취득) ChatGPT 대화의 구체 방법·'다른 폰 기본 활성화 기능'·기타 오픈소스:** 공유 링크 본문이 JS 렌더라 못 읽음 → 사용자 텍스트 붙여넣기 필요(그 구체안은 미조사).
-- 소결: 조사한 두 비루트 아이디어는 cold-boot 벽을 깨지 못함(배경화면=부팅 시 Wi-Fi 필요, 작업 프로필=NR 권한 없음). 루트(길 3)는 깰 수 있음(루팅 폰 한정).
+- 소결: 조사한 비루트 아이디어(Automate Keeper·작업 프로필)는 cold-boot 벽을 깨지 못함(Keeper=부팅 초기화에 Wi-Fi 필요, 작업 프로필=NR 권한 없음). 루트(길 3)는 부팅 특권 기동이 되므로 유력 후보이나 기존 코드의 루트 동작·A·A′는 미확인.
 
 **근거 소스(2026-10-05 조회).** ShizukuPlus README(모드별 start-on-boot=Wireless Debugging/Root), 공식 Shizuku v13.6.0 `BootCompleteReceiver`(조건부 부팅 adbStart), Dhizuku/Dhizuku-API(Device Owner 공유·일반 binder 중계·공개 표면 최소), AOSP `PhoneInterfaceManager`·`TelephonyPermissions`(`setAllowedNetworkTypesForReason`=MODIFY_PHONE_STATE 또는 통신사 권한, DO 우회 없음), AOSP `AdbDebuggingManager`(무선 디버깅 Wi-Fi 연결 검사), AOSP UICC carrier privileges, 삼성 One UI adb_wifi 재부팅 0·`adb tcpip` 세션 한정·persist는 build.prop, adb-wifi-restore(WRITE_SECURE_SETTINGS·mDNS 서브넷 한계·EMUI 무선 adbd Wi-Fi 바인딩·보안 잠금 첫 해제 필요), Magisk 5G/네트워크 모듈(부팅 시 루트 설정·XDA/magiskmodule), Automate "Shizuku Keeper"(부팅 TCP/IP 초기화에 Wi-Fi 필요), Island/Shelter(작업 프로필 Profile Owner·set-profile-owner).
 
