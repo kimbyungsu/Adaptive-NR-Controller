@@ -900,7 +900,7 @@ OBSERVE  ──(제어 불가 조건이 모두 해소됨, 예: S 확보 후 새 
 - **Shizuku(길 2):** 현재 구현·시험본은 관문 A·A′(Wi-Fi 없는 재부팅 자동 복구·종료 전 해제)를 충족하지 못하므로 **완전 자동 백엔드로 안내하지 않는다**(§5.15·§5.17). 이를 모든 Shizuku 파생 경로의 영구 불가능으로 확대하지 않는다.
 - **교훈:** cold-boot 생존(통로/권한의 재부팅 영속)은 아키텍처 초기에 먼저 판정했어야 했다.
 
-**길 3(루트) 경로 분석 (2026-10-05 조사 — 미구현·실기기 검증 전).** 루팅 폰에서는 재부팅 뒤 Wi-Fi·조작·PC 없이 특권 프로세스 기동이 성립할 수 있다(소스 확인: 공식 Shizuku v13.6.0 `BootCompleteReceiver`의 ROOT 분기 `rootStart()`에는 Wi-Fi 검사가 없음). 두 형태(구조가 다름):
+**길 3(루트) 경로 분석 (2026-10-05 조사 — 미구현·실기기 검증 전).** 루팅 폰에서는 재부팅 뒤 Wi-Fi·조작·PC 없이 특권 프로세스 기동이 성립할 수 있다(소스 확인: 공식 Shizuku v13.6.0 `BootCompleteReceiver`의 ROOT 분기 `rootStart()`에는 Wi-Fi 검사가 없음). 세 형태(구조가 다름):
 - **(ㄱ) Sui (Magisk):** Magisk가 띄운 루트 프로세스가 **Shizuku-API를 구현한 서버**를 제공. 공식 Shizuku-API는 root(uid 0)·shell(uid 2000) UserService를 모두 지원하고 `ShizukuProvider`가 v12.1.0+부터 Sui 초기화도 자동 수행 → **우리 앱의 기존 Shizuku API 연동을 재사용할 유력한 후보**다.
 - **(ㄴ) Shizuku 루트 모드:** 공식 Shizuku 앱이 부팅 수신기에서 루트 셸로 서버를 시작(마지막 실행 방식 ROOT·루트 허용 등 조건).
 - **(ㄷ) Magisk 모듈/부팅 스크립트:** 부팅 단계 `service.sh`/`service.d`에서 루트로 네트워크 설정 적용(공개 선례 있음 — 예: Pixel-Magisk-IMS가 부팅 뒤 `app_process`로 통신사 설정 적용. 단 그 주동작은 `overrideConfig`이고 직접 쓰기는 USER 사유라, **CARRIER 비-USER 제어 구현은 별도 설계·검증 대상**).
@@ -909,8 +909,26 @@ OBSERVE  ──(제어 불가 조건이 모두 해소됨, 예: S 확보 후 새 
 **사용자 제시 비루트 아이디어 조사 결과 (2026-10-05, cold-boot 벽을 깨는지만 판정).**
 - **Automate "Shizuku Keeper"(자동화):** **부팅 후 복구와 실행 중 재연결을 지원**한다(저자 설명: 서비스 중단 감지·복구, 시스템 시작 시 실행). 다만 **부팅 때 TCP/IP 초기화에 짧은 Wi-Fi가 필요** → 모바일 데이터만의 cold boot는 못 넘긴다. 이건 Automate 흐름의 설명이고, **특정 '배경화면 앱'의 구현·모든 배경화면 방식의 부팅 조건까지 입증하는 건 아니다**(그 구체안은 소스 미확인).
 - **작업 프로필(Island/Shelter, Profile Owner):** 설정 조건은 경우에 따라 다르다 — **새 작업 프로필 생성**은 부모 사용자 계정을 보존한 채 가능하나, **기존 주 사용자(user 0)에 Profile Owner 지정**은 계정 제거 안내가 있다(명령 자체가 계정 제약을 없애는 건 아님). 더 중요한 건 **Profile Owner 자격만으로는 기기 전체 NR 제어 권한이 생기지 않는다**(AOSP `PhoneInterfaceManager`/`TelephonyPermissions`의 권한 검사에 PO/DO 우회 분기 없음) → NR 제어 불가. (Android 14는 set-profile-owner의 --name 제거.)
-- **(미취득) ChatGPT 대화의 구체 방법·'다른 폰 기본 활성화 기능'·기타 오픈소스:** 공유 링크 본문이 JS 렌더라 못 읽음 → 사용자 텍스트 붙여넣기 필요(그 구체안은 미조사).
+- **(수령·분석) ChatGPT 대화 본문·'다른 폰 기본 활성화 기능'(NFC·모바일 데이터 트리거)·배경화면 앱(Phomeleon):** 사용자가 2026-10-05 대화 본문을 붙여넣어 분석함. 그 핵심 틀(문제를 1층=앱 깨우기 / 2층=특권 얻기로 분리)은 타당하며, 아래 **1층/2층 전수표**로 수용·정리했다. NFC·모바일 데이터 트리거, 배경화면 재바인드는 모두 **"앱 깨우기"와 관련된 후보**일 뿐(각자 전달·실행 조건이 있음 — 표 뒤 1층 공통 조건 참조) 2층(NR 제어 권한)을 주지 못한다(표 참조).
 - 소결: 조사한 비루트 아이디어(Automate Keeper·작업 프로필)는 cold-boot 벽을 깨지 못함(Keeper=부팅 초기화에 Wi-Fi 필요, 작업 프로필=NR 권한 없음). 루트(길 3)는 부팅 특권 기동이 되므로 유력 후보이나 기존 코드의 루트 동작·A·A′는 미확인.
+
+**1층(재기동)/2층(특권) 분리 + 재부팅 영속 역할 전수표 (2026-10-05, 사용자+외부 AI 제안의 틀 수용).** 문제를 두 층으로 나누면 명확해진다. **1층 = 재부팅 뒤 앱 코드를 자동으로 다시 깨우기**(해결책 많음), **2층 = 깨어난 코드가 비-USER 사유 NR 제어 권한을 갖기**(진짜 벽). 지난번 Shizuku(길 2)가 재부팅에서 무너진 건 1층이 아니라 2층 때문이다 — 실측(§5.17)에서 앱(클라이언트)은 BootReceiver로 다시 떴지만(engine_wait 기록) 특권 백엔드인 Shizuku가 Wi-Fi 없는 cold boot 뒤 다시 켜지지 않아 앱이 대기만 했다. 즉 2층(특권)을 Shizuku에 의존시킨 것이 실패 지점이다. OS가 "역할"을 기억해 부팅 뒤 되살리는 컴포넌트를 앵커로 보면:
+
+| 영속 역할/컴포넌트 | 1층(부팅 후 OS 재기동/재바인드) | 2층(비-USER NR 제어 도달) | 비고 |
+|---|---|---|---|
+| BOOT_COMPLETED·BootReceiver | ✓ | — (깨우기만·권한 아님) | **우리 앱이 이미 사용** |
+| WallpaperService(예: Phomeleon) | ✓ OS가 '배경화면 제공자' 기억·재바인드(순정→몇 초 뒤 복원) | ✗ | 화면 제공 권한뿐 |
+| Accessibility Service | ✓ | ✗ | MODIFY_PHONE_STATE 아님. UI 자동화로 바꾸면 **USER 설정**(금지)·OEM·화면 노출·취약 |
+| Notification Listener / Always-on VPN | ✓ OS 재바인드 | ✗ | 알림·VPN 권한뿐 |
+| Device Owner / Profile Owner | ✓(강함, OS가 관리 주체 상태 영속) | ✗ (AOSP 권한 검사에 DO/PO 우회 없음) | DO 설정은 보통 계정·추가 사용자 등 제약(testOnly·계정 호환 예외 분기 존재) |
+| WorkManager / JobScheduler | ✓(조건부 깨우기) | ✗ | 스케줄링뿐 |
+| 기본 SMS·다이얼러 role / IME | ✓(조건부, 역할·입력 사건 시) | ✗ | 해당 role 권한에 MODIFY_PHONE_STATE 없음(AOSP roles.xml) |
+| CompanionDeviceService / SyncAdapter | ✓(동반기기·동기화 사건 시 시스템 바인딩) | ✗ | 연결·동기화 자격만으론 NR 권한 없음 |
+| **통신사 권한(길 1)** | ✓ 첫 잠금 해제 후 BOOT_COMPLETED로 앱 재기동 | **✓** | **이 제품 범위에서 2층 도달** — 부팅 뒤 SIM·CarrierConfig 규칙으로 권한 재성립(영구 고정 아님) |
+
+**1층 ✓의 공통 조건(2026-10-05 Codex 보완).** 위 ✓는 "재부팅 후 OS가 되살린다"는 뜻이되 그 시점은 대개 **사용자의 첫 잠금 해제 이후**다 — 현재 앱은 directBootAware/LOCKED_BOOT_COMPLETED를 선언하지 않아 잠금 해제 전 구간은 대상이 아니고(BOOT_COMPLETED는 첫 잠금 해제 후 전달), 배경화면·접근성도 Direct Boot 지원 여부에 따라 잠금 해제를 기다리며, DO/PO의 상시 연결은 DeviceAdminService 선언이 전제다. 즉 "사용자 설정 조작 없이"는 맞지만 "잠금 해제 없이"는 아니다.
+
+**해석(과확대 금지).** (가) **1층은 (첫 잠금 해제 후) 이미 해결돼 있다** — 우리 앱은 BootReceiver로 부팅 뒤 첫 잠금 해제 시점에 스스로 뜬다(§5.13 관문 4·§5.17 실측 범위). NFC·모바일 데이터·배경화면 같은 트리거는 "앱 깨우기"와 관련된 후보일 뿐 1층에 새로 보탤 게 없다 — 각자 전달·실행 조건이 있고(CONNECTIVITY_ACTION으로 죽은 앱 깨우기는 targetSdk 24+ 매니페스트 수신기에서 막힘·유효 Context의 동적 수신기는 가능; NFC 상태 방송도 일반 앱의 무개입 부팅 기동을 보장하지 않음), BOOT_COMPLETED가 더 직접적이다. (나) **이 제품 조건(OEM 사전탑재·서명/특권 부여 없는 일반 배포 앱)에서 확인한 영속 역할 중, 사용자 설정으로 2층(telephony 비-USER 제어)에 도달하는 것은 통신사 권한(길 1)뿐**이다. 단 이는 주요 역할 범위의 조사이지 형식적 완전 열거가 아니며, 플랫폼 자체에는 다른 특권 경로가 있다(예: systemOnly 역할 SYSTEM_AUDIO_INTELLIGENCE는 MODIFY_PHONE_STATE를 받음 — 일반 배포 앱이 이 역할을 가질 수 없어 제품 경로가 아닐 뿐). (다) 외부 AI가 그린 이상적 구조 "영속 권한 앵커 + OS 재기동 + 재부팅 뒤 살아 있는 특권 백엔드"는 **그 구조적 대응 관계 한정으로** 길 1이 이미 구현한 모습이다(권한=부팅 뒤 재성립하는 통신사 권한, 재기동=첫 잠금 해제 후 BOOT_COMPLETED). 단 "이미 구현"이 첫 잠금 해제 전 구간·모든 지원 폰에서의 기동·전체 복구 관문 충족까지 뜻하지는 않는다. 이 제품 조건·확인한 후보 범위에서는 비루트 NR 제어가 길 1로 모이며(플랫폼 전체의 유일성 증명은 아님), 길 1이 막힌 폰에서 2층을 주는 영속 비루트 "일반 앱" 경로는 확인되지 않았고 그 경우 루트가 2층을 연다.
 
 **근거 소스(2026-10-05 조회).** ShizukuPlus README(모드별 start-on-boot=Wireless Debugging/Root), 공식 Shizuku v13.6.0 `BootCompleteReceiver`(조건부 부팅 adbStart), Dhizuku/Dhizuku-API(Device Owner 공유·일반 binder 중계·공개 표면 최소), AOSP `PhoneInterfaceManager`·`TelephonyPermissions`(`setAllowedNetworkTypesForReason`=MODIFY_PHONE_STATE 또는 통신사 권한, DO 우회 없음), AOSP `AdbDebuggingManager`(무선 디버깅 Wi-Fi 연결 검사), AOSP UICC carrier privileges, 삼성 One UI adb_wifi 재부팅 0·`adb tcpip` 세션 한정·persist는 build.prop, adb-wifi-restore(WRITE_SECURE_SETTINGS·mDNS 서브넷 한계·EMUI 무선 adbd Wi-Fi 바인딩·보안 잠금 첫 해제 필요), Magisk 5G/네트워크 모듈(부팅 시 루트 설정·XDA/magiskmodule), Automate "Shizuku Keeper"(부팅 TCP/IP 초기화에 Wi-Fi 필요), Island/Shelter(작업 프로필 Profile Owner·set-profile-owner).
 
