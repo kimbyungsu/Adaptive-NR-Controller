@@ -9,8 +9,10 @@ public final class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context ctx, Intent intent) {
         String a = intent.getAction();
-        if (Intent.ACTION_BOOT_COMPLETED.equals(a) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)) {
-            ControllerService.ensure(ctx);
+        if (Intent.ACTION_BOOT_COMPLETED.equals(a)) {
+            ControllerService.ensure(ctx, "boot");
+        } else if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)) {
+            ControllerService.ensure(ctx, "update");
         }
     }
 }

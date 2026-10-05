@@ -50,6 +50,9 @@ public final class ControllerService extends Service implements Engine.Host, Shz
     static final long LEFTOVER_RETRY_MS = 30_000;
     static final long SHUTDOWN_WAIT_MS = 3_000;
     static final long SHZ_AUDIT_MS = 60_000;
+    /** 부팅 직후 통신사 인정·SIM이 자리잡기까지 기다리는 재시도 간격·횟수(§5.18 전진 설계: Phomeleon식 수십 초 지연 허용). */
+    static final long RECOVERY_RETRY_MS = 5_000;
+    static final int RECOVERY_MAX_TRIES = 12;
     /** 무선 디버깅 켜짐 여부 전역 설정 키(Shizuku가 꺼지는 원인 진단용으로 바뀜만 기록). */
     static final String ADB_WIFI_KEY = "adb_wifi_enabled";
 
@@ -69,6 +72,9 @@ public final class ControllerService extends Service implements Engine.Host, Shz
     private Radio radio;
     private Engine engine;
     private ScheduledFuture<?> leftoverRetry;
+    /** 부팅 직후 통신사 인정·SIM이 늦게 자리잡는 경우를 위한 한정 재시도(엔진이 뜨거나 한도를 넘으면 멈춘다). 길 1(통신사) 경로에서만 쓴다. */
+    private ScheduledFuture<?> recoveryRetry;
+    private int recoveryTries;
     private ConnectivityManager cm;
     private ConnectivityManager.NetworkCallback netCb;
     private ContentObserver keyObs;
@@ -88,8 +94,13 @@ public final class ControllerService extends Service implements Engine.Host, Shz
      * 거절돼도 running이 false로 남으므로 타일·화면에 "멈춤"이 보인다.
      */
     static boolean ensure(Context c) {
+        return ensure(c, "ui");
+    }
+
+    /** cause = 무엇이 서비스를 띄웠는지(부팅 "boot"/업데이트 "update"/화면·타일 "ui"). 원본 기록 nrc.log에 남겨 '무개입 부팅 복구'를 '앱 열어서 시작'과 구분한다(§5.18 확인용 — 알림·활동 기록은 보조 신호일 뿐). */
+    static boolean ensure(Context c, String cause) {
         try {
-            c.startForegroundService(new Intent(c, ControllerService.class));
+            c.startForegroundService(new Intent(c, ControllerService.class).putExtra("cause", cause));
             return true;
         } catch (RuntimeException e) {
             AppState.refreshTile(c);
@@ -292,7 +303,8 @@ public final class ControllerService extends Service implements Engine.Host, Shz
         f.addAction(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED);
         registerReceiver(sysRx, f);
 
-        post("create", this::startEngineIfWanted);
+        // 엔진 시작은 onStartCommand에서 한다(시작 원인 기록 뒤). onBind가 null·바인딩 경로 없음 = start-only 서비스라
+        // 모든 시작에 onStartCommand가 따라오므로, 여기서 먼저 걸면 engine_start가 start 기록보다 앞서게 된다(검증 지적 f-60d19a24).
         shzAudit = worker.scheduleWithFixedDelay(() -> guarded("shz_audit", () -> {
             if (shz != null) shz.audit();
         }), SHZ_AUDIT_MS, SHZ_AUDIT_MS, TimeUnit.MILLISECONDS);
@@ -314,7 +326,12 @@ public final class ControllerService extends Service implements Engine.Host, Shz
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(NOTE_ID, note()); // 알림 허락이 나중에 켜졌으면 이때 보인다
+        // 시작 원인: 부팅/업데이트/화면·타일(ui)은 ensure가 extra로 넣는다. intent==null은 START_STICKY로 시스템이
+        // 되살린 것(사용자 조작 아님)이라 "restart", extra가 없으면 "unknown" — 무개입 시작을 "ui"로 오기록하지 않는다(f-b8652cd0).
+        final String cause = intent == null ? "restart"
+                : (intent.getStringExtra("cause") != null ? intent.getStringExtra("cause") : "unknown");
         post("start_command", () -> {
+            journal.write("start", "cause", cause); // boot/update=무개입 · ui=앱 열기 · restart=시스템 재생성 · unknown — 무개입 복구 확인용(§5.18)
             startEngineIfWanted();
             if (engine == null) publishIdle();
             AppState.refreshTile(this); // 상태가 그대로여도 타일을 한 번 칠한다(부팅·업데이트 뒤)
@@ -368,6 +385,7 @@ public final class ControllerService extends Service implements Engine.Host, Shz
         if (carrier == null) {
             journal.write("engine_wait", "why", "no_sim");
             noteOnce("no_sim", "SIM을 아직 확인하지 못해 자동 제어를 기다리는 중");
+            if (!viaShz) armRecoveryRetry(); // 부팅 직후 SIM이 늦게 잡히는 경우 몇 번 더 본다
             publishIdle();
             return;
         }
@@ -385,11 +403,13 @@ public final class ControllerService extends Service implements Engine.Host, Shz
             if (!radio.privileged()) {
                 journal.write("engine_wait", "why", "no_privilege", "own", Engine.ownMask(this, radio.sub));
                 noteOnce("no_privilege", "5G/LTE 전환 권한이 없어 자동 제어를 시작하지 못함(처음 설정 필요)");
+                armRecoveryRetry(); // 부팅 직후 통신사 인정이 늦게 생기는 경우 몇 번 더 본다
                 publishIdle();
                 return;
             }
         }
         lastNote = null; // 다음에 다시 기다리게 되면 그 이유를 다시 남긴다
+        cancelRecovery(); // 엔진이 떴으니 부팅 재시도는 멈춘다
         engine = new Engine(this, radio, journal, timeline, worker, this);
         engine.start(wifi, isInteractive());
     }
@@ -577,6 +597,32 @@ public final class ControllerService extends Service implements Engine.Host, Shz
         }), LEFTOVER_RETRY_MS, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * 부팅 직후 통신사 인정·SIM이 늦게 자리잡는 경우를 위한 한정 재시도(§5.18 전진 설계: Phomeleon식 수십 초 지연 허용).
+     * 길 1(통신사) 경로에서 엔진을 못 띄우고 기다리게 됐을 때만 건다. 엔진이 뜨거나 한도(약 1분)를 넘으면 스스로 멈춘다.
+     * 작업 스레드에서만 부른다(startEngineIfWanted와 같은 스레드라 recoveryRetry·recoveryTries 접근이 안전).
+     */
+    private void armRecoveryRetry() {
+        if (terminating || recoveryRetry != null || engine != null) return;
+        recoveryTries = 0;
+        recoveryRetry = worker.scheduleWithFixedDelay(() -> guarded("recovery", this::recoveryTick),
+                RECOVERY_RETRY_MS, RECOVERY_RETRY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void recoveryTick() {
+        if (engine != null || terminating || !AppState.auto(this) || shizukuWay(this) || ++recoveryTries > RECOVERY_MAX_TRIES) {
+            cancelRecovery();
+            return;
+        }
+        journal.write("recovery_retry", "try", recoveryTries);
+        startEngineIfWanted(); // 가능해졌으면 엔진이 뜨고(그 안에서 cancelRecovery), 아니면 다음 tick에서 다시 본다
+    }
+
+    private void cancelRecovery() {
+        if (recoveryRetry != null) recoveryRetry.cancel(false);
+        recoveryRetry = null;
+    }
+
     // ================================================================ 폰 꺼짐
 
     /**
@@ -690,6 +736,9 @@ public final class ControllerService extends Service implements Engine.Host, Shz
         // 서비스가 정상 종료되면 폰 꺼짐과 같게 우리 막음을 푼다(쉬는 중이어도). 길 2는 풀고 나서 도우미를 끝낸다
         liftBeforeShutdown();
         if (shzAudit != null) shzAudit.cancel(false);
+        // 워커의 cancelRecovery가 이 필드를 null로 만들 수 있으니 한 번만 읽어 쓴다(검사·사용 사이 경합 NPE 방지, f-348f91c2). cancel은 멱등·스레드안전.
+        ScheduledFuture<?> rr = recoveryRetry;
+        if (rr != null) rr.cancel(false);
         if (adbObs != null) {
             try {
                 getContentResolver().unregisterContentObserver(adbObs);
