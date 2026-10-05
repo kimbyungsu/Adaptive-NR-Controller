@@ -865,7 +865,31 @@ OBSERVE  ──(제어 불가 조건이 모두 해소됨, 예: S 확보 후 새 
 - **패치 + 비루트 폰:** 이 제품 조건에서 완전 자동을 충족할 지원 가능한 경로를 **확인하지 못했다**(플랫폼 전체 불가능의 증명은 아님). 요구를 낮추는 게 아니라 "현재 확인된 범위에서 수단 없음"이다.
 - **열린 제품 결정(사용자):** 패치·비루트 폰을 (A) 완전 자동 **현재 제품 "지원 범위 밖"**으로 명시할지, (B) 루트 경로(길 3)를 새 대상으로 열지. 둘 다 요구를 낮추지 않는다. 알림·쉬기 단축 같은 "반자동 완화"는 관문을 넘기지 못하므로 채택하지 않는다.
 
-**다음 실행(고정).** ② 길 2는 완전 자동 백엔드로는 "이 제품 조건에서 지원 수단 미확인" 판정 → 완전 자동 모드로 안내하지 않는다(코드는 'Shizuku 살아 있을 때의 보조 제어'로만 두고 완전 자동 약속에서 분리). ③ 관문 B(길 1, Wi-Fi 끄고 cold reboot 자동 복구)를 실기기로 **추가 확인**한다(§5.13의 다른 미확인 항목까지 닫는 것은 아님). ④ 루트 경로(길 3) 착수 여부는 사용자 결정 대기.
+**다음 실행(고정).** ② 길 2(표준 Shizuku 무선 디버깅)는 Wi-Fi 없는 cold reboot를 못 넘김 → 완전 자동 모드로 안내하지 않는다(코드는 'Shizuku 살아 있을 때의 보조 제어'로만 둠). **단 이것을 '무루팅 영구동작 전체 불가'로 넓히지 않는다**(사용자 지적 2026-10-05 — 아래 실현가능성 트리). ③ 관문 B(길 1, Wi-Fi 끄고 cold reboot)는 통신사 권한 유지·way=carrier 실행까지 확인(무개입 자동 시작 격리는 아님, §5.13 관문 4 기존 확인). ④ 제품 범위 결정은 아래 트리의 **두 열린 문제(① shell 통로의 cold-boot 생존, ② Device Owner의 NR 제어 가부) 뒤로** 미룬다.
+
+### 5.18 재부팅 영속 비루트 특권 — 실현가능성 트리 (2026-10-05 조사, 구현 전)
+
+사용자 방향(2026-10-05): "표준 Shizuku 무선 디버깅 실패"를 "무루팅 영구동작 불가"로 넓히지 말 것. 구현 전에 공개 소스에서 쓰이는 재부팅-영속 비루트 특권 경로를 각각 NRC 요구(재부팅 뒤 Wi-Fi·조작·PC 없이 비-USER 사유 allowed-network-types read/write; 제품은 CARRIER)에 대입해 판정한다. 판정만 하고 구현은 않는다.
+
+| 경로 | 재부팅 생존 | Wi-Fi 없이 cold boot | 1회 외 사용자 조작 | 비-USER 사유 read/write | 최신 삼성 | 판정·근거 |
+|---|---|---|---|---|---|---|
+| 통신사 권한(길 1) | ✓(권한 앱에 영속) | ✓ | 없음※ | ✓ `hasCarrierPrivileges` | 노트20U ✓·패치폰 미시험 | **되는 경로(미패치 폰).** ※자동 시작은 §5.13 관문 4로 기존 확인, Wi-Fi-off 이번 실행은 무개입 격리 안 됨 |
+| 표준 Shizuku 무선 디버깅 | 세션뿐 | ✗ | 조건부 자동 시작 시도 가능† | ✓(shell 살아 있을 때) | adb_wifi 재부팅 0 | **Wi-Fi 없는 cold boot 미충족**(AdbDebuggingManager Wi-Fi 연결 검사). †공식 v13.6.0 BootCompleteReceiver는 Android 13+·WRITE_SECURE_SETTINGS·마지막 ADB 시작 조건이면 부팅 시 adbStart 시도(= 기존 프로세스가 재부팅을 못 넘는 것과 '다시 시작 불가'는 다름) |
+| ShizukuPlus + ADB TCP | 조건부(TCP 수신이 살아 있으면) | 조건부 | — | ✓(살아 있을 때) | — | **열린 문제(사용자 지적).** BootCompleteReceiver/AdbStartWorker에 기존 TCP 포트로 Wi-Fi 없이 시작하는 분기 **존재**. 단 **재부팅을 넘겨 그 TCP 수신을 마련하는 비루트 방법이 미확인**(`adb tcpip`는 세션뿐, `persist.adb.tcp.port`는 build.prop=루트). → 불가로 단정하지 않음 |
+| adb-wifi-restore류(WRITE_SECURE_SETTINGS 자가 재활성) | ✓(부팅 후 adb_wifi=1 시도) | ✗ | 보안 잠금 시 첫 잠금 해제 필요 | ✓(연결되면) | — | **Wi-Fi 없는 cold boot 미충족.** 모바일데이터로 무선 디버깅 불가 근거=AdbDebuggingManager Wi-Fi 검사(README는 mDNS 서브넷 한계·EMUI 무선 adbd의 Wi-Fi 바인딩을 관찰). = §5.14 옆문(미채택) 계열 |
+| **Dhizuku / Device Owner** | **✓(소유자 자격 영속)** | **✓** | 최초 1회 ADB(계정 없는 기기) | **✗ 가능성 높음 — PoC로 확정** | Android 8~17 | **소유자 자격은 재부팅·Wi-Fi·조작을 넘지만(≠제품 무개입 복구 입증), NR 제어가 관건.** AOSP `setAllowedNetworkTypesForReason`은 MODIFY_PHONE_STATE/통신사 권한 검사이고 **Device Owner 우회 분기 없음**(PhoneInterfaceManager·TelephonyPermissions), Dhizuku 자동부여도 그 권한 미획득 → 거부 가능성 높음. **단 PoC로 확정**(Dhizuku 중계 승인·호출 신분·예외 발생 지점까지 확인) |
+| OEM 전용 persistent | 기종별 | 기종별 | — | — | 이번 조사서 못 찾음 | 확인된 것 없음(부재 증명 아님) |
+| Root(길 3) | ✓ | ✓ | 루팅 | ✓ | ✓ | **되나 목표 아님**(루팅 폰 한정) |
+
+**트리 판정(과확대 금지 — 현 근거로 말할 수 있는 범위).** 현재 근거로는 **"이 제품 조건에서 지원 가능한 완전 자동 경로가 아직 확인되지 않았다"**까지다. "나머지 경로는 모두 제외됐고 Dhizuku PoC 하나로 가능·불가능이 결정된다"는 단계에는 **도달하지 않았다.** 정리:
+- 되는 경로(확인): 통신사 권한(길 1) — 미패치 폰, NR 제어 ✓. 패치 폰 가부 미시험.
+- **열린 문제 ①(통로의 cold-boot 생존):** 재부팅을 넘겨 "shell 통로(TCP 수신)"를 마련하는 비루트 방법 — ShizukuPlus의 부팅 시작 분기는 TCP 수신이 있으면 Wi-Fi 없이 시작하나, 그 TCP 수신을 재부팅 너머로 두는 비루트 방법이 미확인. (`persist.adb.tcp.port`=루트, 무선 디버깅=Wi-Fi.)
+- **열린 문제 ②(영속 특권의 NR 제어):** Device Owner(Dhizuku)는 재부팅·Wi-Fi·조작을 넘지만 NR(비-USER 사유) 제어 가부가 미확정. 소스상 거부 가능성 높음(AOSP enforceModifyPermission에 DO 우회 없음)이나 PoC로 확정.
+- 루트(길 3)=됨·목표 아님.
+
+**열린 PoC(구현 아님, 판정용) — 판정 기준 한정.** Dhizuku로 Device Owner 신분을 받은 앱이 `ITelephony.setAllowedNetworkTypesForReason(비-USER, mask)`를 read/write할 수 있는지. **판정 기준:** 호출 성공은 *그 기기·빌드·호출 신분에서 CARRIER read/write가 됐다*까지만 입증(무개입 재부팅 복구는 별도 시험). 거부면 **예외 발생 지점·권한 검사를 확인해** Dhizuku 자체 승인 거부인지 telephony의 권한 거부인지 가린 뒤에만 Device Owner 경로를 후보에서 뺀다. **제약:** Device Owner 설정은 계정 없는 기기 필요(daily 폰 부적합) → 여분/초기화 기기 또는 계정 제거 뒤. 열린 문제 ①(TCP 수신의 재부팅 생존)도 별도로 남는다.
+
+**근거 소스(2026-10-05 조회).** ShizukuPlus README(모드별 start-on-boot=Wireless Debugging/Root), 공식 Shizuku v13.6.0 `BootCompleteReceiver`(조건부 부팅 adbStart), Dhizuku/Dhizuku-API(Device Owner 공유·일반 binder 중계·공개 표면 최소), AOSP `PhoneInterfaceManager`·`TelephonyPermissions`(`setAllowedNetworkTypesForReason`=MODIFY_PHONE_STATE 또는 통신사 권한, DO 우회 없음), AOSP `AdbDebuggingManager`(무선 디버깅 Wi-Fi 연결 검사), AOSP UICC carrier privileges, 삼성 One UI adb_wifi 재부팅 0·`adb tcpip` 세션 한정·persist는 build.prop, adb-wifi-restore(WRITE_SECURE_SETTINGS·mDNS 서브넷 한계·EMUI 무선 adbd Wi-Fi 바인딩·보안 잠금 첫 해제 필요).
 
 ---
 
