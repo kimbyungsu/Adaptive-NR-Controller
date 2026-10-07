@@ -24,9 +24,29 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- no-wifi 관측 하네스(BootProbe)용: 부팅 뒤 통로 복구를 수 분 관측하는 포그라운드 서비스 + 네트워크·Wi-Fi 스위치 상태 읽기.
+         모두 특권 아님. 관측 전용이라 전화 설정은 쓰지 않는다. (DESIGN §5.18 '새 후보 탐색 2차') -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- 시작하기 화면(ProbeControl)이 Shizuku 이름표 앱이 깔렸는지·Shizuku-Next 서명인지 읽고 그 앱을 열 수 있게(안드로이드 11+ 앱 보기 제한) -->
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+    </queries>
+
     <application android:label="NR Shizuku PoC" android:hasCode="true"
-        tools:ignore="AllowBackup,GoogleAppIndexingWarning">
+        android:debuggable="true"
+        tools:ignore="AllowBackup,GoogleAppIndexingWarning,HardcodedDebugMode">
         <activity android:name=".Main" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- no-wifi 관측 하네스 켜기/끄기·로그 보기 화면(ProbeControl). Main과 분리(관측 쪽은 전화 설정 쓰기 코드와 안 섞음). -->
+        <activity android:name=".ProbeControl" android:exported="true" android:label="NR no-wifi probe">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -39,6 +59,9 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- no-wifi 관측 하네스(포그라운드 서비스). 관측 전용: pingBinder/상태 읽기만, 전화 설정 안 씀(구조적 fail-open). -->
+        <service android:name=".BootProbe" android:exported="false" android:foregroundServiceType="dataSync" />
 
         <!-- 공식 Shizuku provider: 앱이 Shizuku binder를 받는 통로 -->
         <provider

@@ -27,7 +27,15 @@ public final class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context ctx, Intent intent) {
         if (intent == null || !Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
-        // 되돌릴 게 없으면 조용히(앱 내부 저장소의 기록 파일 — 재부팅 후에도 남는다).
+        // no-wifi 관측 하네스가 켜져 있으면(ProbeControl) 부팅 시 띄운다 — DESIGN §5.18 '새 후보 탐색 2차'.
+        // 관측 전용(BootProbe는 전화 설정을 쓰지 않음). '되돌릴 기록' 유무와 무관하게 먼저 처리한다.
+        if (BootProbe.enabled(ctx)) {
+            try {
+                ctx.startForegroundService(new Intent(ctx, BootProbe.class).putExtra("cause", "boot"));
+            } catch (Throwable ignored) {
+            }
+        }
+        // 되돌릴 게 없으면 (알림은) 조용히 생략(앱 내부 저장소의 기록 파일 — 재부팅 후에도 남는다).
         File pending = new File(ctx.getFilesDir(), "pending_power_restore.txt");
         if (!pending.exists()) return;
         try {
